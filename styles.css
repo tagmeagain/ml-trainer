@@ -1,0 +1,288 @@
+/* ML Trainer — dark by default, one column, no framework.
+   The card page is seen dozens of times a day: nothing blinks, nothing
+   counts down, nothing nags. */
+
+:root {
+  /* surfaces */
+  --bg:            #0e1116;
+  --surface:       #161b22;
+  --surface-2:     #1c2330;
+  --border:        #262d38;
+
+  /* text */
+  --text:          #e6edf3;
+  --text-dim:      #9aa7b4;
+  --text-faint:    #6b7785;
+
+  /* accents — one hue, used sparingly */
+  --accent:        #7aa2f7;
+  --accent-dim:    #2b3a5c;
+  --tint:          #131b2b;   /* worked-example box */
+  --warn:          #d9a441;
+
+  --radius:        12px;
+  --gap:           1.15rem;
+  --bar-h:         4rem;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+          Arial, "Noto Sans", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+body {
+  min-height: 100dvh;
+  /* room for the fixed bar plus the Android gesture inset */
+  padding-bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------------------------------------------------------------- card */
+
+.card {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: calc(1.2rem + env(safe-area-inset-top, 0px)) 1.2rem 2rem;
+}
+
+/* 1. category chip, stage, position */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+
+.chip {
+  background: var(--accent-dim);
+  color: var(--accent);
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.stage {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+}
+
+.position {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--text-faint);
+}
+
+/* 2. topic and difficulty */
+.topic {
+  margin: 0 0 0.15rem;
+  font-size: 1.55rem;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.difficulty {
+  margin: 0 0 var(--gap);
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.difficulty[data-level="hard"] { color: #d98d8d; }
+.difficulty[data-level="mid"]  { color: var(--warn); }
+.difficulty[data-level="easy"] { color: #7fb08a; }
+
+/* 3. formula — large, centred, horizontally scrollable if it overflows */
+.formula {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.3rem 0.9rem;
+  margin-bottom: var(--gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+.formula .katex-display { margin: 0; }
+.formula .katex { font-size: 1.25em; }
+
+/* a formula KaTeX could not parse degrades to readable monospace */
+.formula .raw {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--warn);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+}
+
+/* 4. concept */
+.concept { margin-bottom: var(--gap); }
+.concept p { margin: 0; }
+
+/* 5. worked example, tinted */
+.example {
+  background: var(--tint);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.9rem 1.05rem;
+  margin-bottom: 1.6rem;
+  font-size: 0.96rem;
+}
+.example p { margin: 0; }
+.example::before {
+  content: "Worked example";
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 0.35rem;
+}
+
+/* 6. Test me — expands the card in place, never navigates */
+.reveal {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.reveal:hover  { background: var(--accent-dim); }
+.reveal:active { background: var(--accent-dim); }
+.reveal[hidden] { display: none; }
+
+.question, .answers {
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border);
+}
+
+.question h2, .answers h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.question p { margin: 0; font-size: 1.05rem; }
+
+.answers ul { margin: 0; padding-left: 1.1rem; }
+.answers li { margin-bottom: 0.6rem; }
+.answers li:last-child { margin-bottom: 0; }
+.answers li::marker { color: var(--accent); }
+
+/* --------------------------------------------------------- bottom bar */
+
+.bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-inline: 1rem;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+}
+
+.bar button {
+  min-width: 3.4rem;
+  height: 2.6rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.bar button:disabled { opacity: 0.35; cursor: default; }
+.bar button:active:not(:disabled) { background: var(--accent-dim); }
+
+.bar-label {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  text-align: center;
+  flex: 1;
+}
+
+/* ------------------------------------------------------------- banner */
+
+.banner {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px) + 0.6rem);
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.banner[hidden] { display: none; }
+
+/* --------------------------------------------------------------- misc */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* Light mode is not the point of this app, but do not blind anyone who
+   forces it at the OS level. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #fbfcfd;  --surface: #f1f4f8;  --surface-2: #e8edf4;
+    --border: #d5dde7;
+    --text: #131a22; --text-dim: #4c5866; --text-faint: #6b7785;
+    --accent: #2c5fd0; --accent-dim: #dde6fa; --tint: #eef3fd;
+    color-scheme: light;
+  }
+}

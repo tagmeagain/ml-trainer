@@ -1,0 +1,18 @@
+# Review state lives in localStorage on the device and is never committed.
+# Content and review state stay separate on purpose (CLAUDE.md rule 4).
+
+# Bulk-edit scratch file — JSON stays the source of truth (SPEC 6.5).
+cards.csv
+
+# Secrets
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store

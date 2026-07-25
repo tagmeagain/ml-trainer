@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ML Trainer</title>
+<meta name="description" content="One ML/LLM interview concept card at a time.">
+
+<meta name="theme-color" content="#0e1116">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ML Trainer">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+
+<!-- KaTeX from CDN, pinned. Precached by the service worker so formulas
+     still render with no network. -->
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+      integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+"
+      crossorigin="anonymous">
+<script defer
+        src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"
+        integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg"
+        crossorigin="anonymous"></script>
+</head>
+<body>
+
+<main id="card" class="card" aria-live="polite">
+  <!-- 1. category chip, stage code, position -->
+  <header class="meta">
+    <span class="chip" id="category"></span>
+    <span class="stage" id="stage"></span>
+    <span class="position" id="position"></span>
+  </header>
+
+  <!-- 2. topic and difficulty -->
+  <h1 class="topic" id="topic"></h1>
+  <p class="difficulty" id="difficulty"></p>
+
+  <!-- 3. formula block, only when the card has one -->
+  <section class="formula" id="formula" hidden></section>
+
+  <!-- 4. concept -->
+  <section class="concept" id="concept"></section>
+
+  <!-- 5. worked example -->
+  <section class="example" id="example"></section>
+
+  <!-- 6. test me, expanding in place -->
+  <button class="reveal" id="reveal" type="button"></button>
+
+  <section class="question" id="question" hidden>
+    <h2>Interview question</h2>
+    <p id="question-text"></p>
+  </section>
+
+  <section class="answers" id="answers" hidden>
+    <h2>Answer points</h2>
+    <ul id="answer-list"></ul>
+  </section>
+</main>
+
+<nav class="bar" aria-label="Card navigation">
+  <button id="prev" type="button" aria-label="Previous card">←</button>
+  <span class="bar-label" id="bar-label"></span>
+  <button id="next" type="button" aria-label="Next card">→</button>
+</nav>
+
+<div id="banner" class="banner" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

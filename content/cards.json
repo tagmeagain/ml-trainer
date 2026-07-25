@@ -1,0 +1,683 @@
+[
+  {
+    "id": "attention-scaled-dot-product-004",
+    "type": "formula",
+    "stage": "S3",
+    "category": "attention",
+    "topic": "Scaled Dot-Product",
+    "difficulty": "mid",
+    "formula": "\\text{Attention}(Q,K,V) = \\mathrm{softmax}\\!\\left(\\frac{QK^{\\top}}{\\sqrt{d_k}}\\right)V",
+    "concept": "Q is n\\u00d7d_k queries, K is m\\u00d7d_k keys, V is m\\u00d7d_v values. QK^T scores every query against every key. Dividing by \\u221ad_k holds the variance of that dot product near 1: summing d_k unit-variance products gives variance d_k, so without the scale the logits spread as \\u221ad_k, the softmax saturates toward one-hot, and its Jacobian vanishes. Softmax over the key axis turns scores into a distribution, and multiplying by V takes the weighted average. Causal masking adds \\u2212\\u221e to positions j>i before the softmax so future tokens get exactly zero weight.",
+    "example": "GPT-2 small: d_model=768, 12 heads, d_k=64, n=1024. Per head QK^T is 1024\\u00d71024 = 1.05M scores; across 12 heads that is 12.6M scores and about 4.2 GFLOPs for the two matmuls per layer. Unscaled, a dot product of unit-variance entries over 64 terms has std \\u221a64 = 8, so logits span roughly \\u00b124 and softmax puts over 0.99 on a single key. Dividing by 8 pulls the std back to 1.",
+    "interview_question": "A colleague drops the 1/\\u221ad_k term and reports that training stalls almost immediately at d_k=64 but is perfectly fine at d_k=8. Derive why, and say what you would expect to see in the attention gradients.",
+    "answer_points": [
+      "q\\u00b7k sums d_k products; with unit-variance independent entries Var = d_k, so logit std is \\u221ad_k \\u2014 8 at d_k=64 versus 2.8 at d_k=8",
+      "Wide logits drive softmax toward one-hot, and its Jacobian diag(s) \\u2212 ss^T \\u2192 0 there, so no gradient reaches W_Q or W_K",
+      "d_k=8 still lands inside the softmax's responsive band, which is why the small case trains normally",
+      "The scale is a constant and could in principle be folded into W_Q at init \\u2014 it is not, because the weights drift during training while \\u221ad_k stays exact"
+    ],
+    "tags": [
+      "attention",
+      "softmax",
+      "scaling"
+    ],
+    "source_link": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+    "id": "attention-mha-parameters-005",
+    "type": "formula",
+    "stage": "S3",
+    "category": "attention",
+    "topic": "MHA Parameters",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} P_{\\text{attn}} = 4\\,d_{\\text{model}}^{2}, \\qquad P_{\\text{FFN}} = 8\\,d_{\\text{model}}^{2} \\\\[3pt] P_{\\text{block}} = 12\\,d_{\\text{model}}^{2} \\end{gathered}",
+    "concept": "W_Q, W_K, W_V and W_O are each d_model\\u00d7d_model, so attention costs 4d\\u00b2 per layer no matter how many heads there are \\u2014 splitting into h heads only reshapes d_model into h\\u00b7d_h. A 4\\u00d7-expansion FFN adds two d\\u00d74d matrices, or 8d\\u00b2, making the block 12d\\u00b2 and putting attention at one third of it. Multiply by L for the body. Embedding and unembedding are V\\u00b7d_model and sit outside this count.",
+    "example": "GPT-3 175B: d_model=12288, L=96. Attention is 4\\u00b712288\\u00b2 = 604M per layer \\u00d7 96 = 58B. FFN is 8\\u00b712288\\u00b2 = 1.21B per layer \\u00d7 96 = 116B. Body total 174B, plus a 50257\\u00d712288 embedding at 0.6B \\u2014 that is the 175B. Do the same for GPT-2 small (d=768, L=12): 12\\u00b7768\\u00b2\\u00b712 = 85M body, but the 50257\\u00d7768 embedding adds 39M, a third again.",
+    "interview_question": "You are asked at a whiteboard to size a 96-layer, d_model=12288 decoder in under a minute, then to say what fraction of it a LoRA placed only on the attention projections would touch. Work it through.",
+    "answer_points": [
+      "12d\\u00b2 per layer: 4d\\u00b2 attention plus 8d\\u00b2 FFN at 4\\u00d7 expansion, so 12\\u00b712288\\u00b2\\u00b796 \\u2248 174B",
+      "Head count never enters \\u2014 h heads of width d_model/h partition the same four matrices",
+      "Embedding plus unembedding is V\\u00b7d_model: negligible at 175B, but a third of a 125M model",
+      "Attention is exactly one third of the body, so attention-only LoRA can reach at most 33% of it \\u2014 which is why modern recipes also target the FFN projections",
+      "GQA breaks the 4d\\u00b2 rule: W_K and W_V shrink to d_model\\u00b7(G\\u00b7d_h), putting LLaMA-2 70B attention nearer 2.25d\\u00b2"
+    ],
+    "tags": [
+      "parameters",
+      "scaling",
+      "mha"
+    ],
+    "source_link": "https://arxiv.org/abs/2005.14165"
+  },
+  {
+    "id": "inference-kv-cache-memory-062",
+    "type": "formula",
+    "stage": "I3",
+    "category": "inference",
+    "topic": "KV Cache Memory",
+    "difficulty": "hard",
+    "formula": "\\text{bytes} = 2 \\cdot L \\cdot S \\cdot G \\cdot d_h \\cdot b_{\\text{dtype}} \\cdot B",
+    "concept": "Every layer stores one K and one V tensor per KV head, which is the leading 2. L is layers, S positions in context, G key/value heads (under GQA fewer than the query heads H), d_h the per-head width, b_dtype bytes per element, B concurrent sequences. It is linear in both S and B and is never amortised: weights are paid once for the whole fleet, cache is paid per request per token.",
+    "example": "LLaMA-2 70B: L=80, G=8, d_h=128, fp16. At S=4096, B=1 that is 2\\u00b780\\u00b74096\\u00b78\\u00b7128\\u00b72 = 10.5 GB. Weights are 140 GB, so on a 2\\u00d780 GB A100 node only 20 GB remains \\u2014 under two concurrent 4k requests before OOM. Switch the cache to FP8 and it halves to 5.2 GB, buying four. Without GQA (G=H=64) the same request would need 84 GB and would not fit at all.",
+    "interview_question": "Your fleet holds 40 concurrent requests at 512-token contexts but only 4 once average context reaches 4k, and GPU utilisation falls with it. Derive the memory numbers and rank the fixes you would ship.",
+    "answer_points": [
+      "Cache is linear in S\\u00b7B, so 8\\u00d7 the context is 8\\u00d7 the bytes and the batch that fits shrinks 8\\u00d7",
+      "Small batch means decode still reads all 140 GB of weights to emit few tokens \\u2014 arithmetic intensity collapses and the GPU idles on HBM",
+      "GQA already bought 8\\u00d7 here (64 query heads, 8 KV heads); remaining levers are FP8/INT8 cache, PagedAttention against fragmentation, and prefix caching for shared system prompts",
+      "Utilisation falling is the tell that this is a memory-capacity problem showing up as a bandwidth problem, not a compute shortage",
+      "MLA, as in DeepSeek-V2, compresses KV into a single per-token latent \\u2014 roughly a tenth of GQA, and an axis independent of quantisation"
+    ],
+    "tags": [
+      "kv-cache",
+      "memory",
+      "serving",
+      "gqa"
+    ],
+    "source_link": "https://arxiv.org/abs/2309.06180"
+  },
+  {
+    "id": "efficient-attention-gqa-kv-reduction-006",
+    "type": "formula",
+    "stage": "S7",
+    "category": "efficient-attention",
+    "topic": "GQA KV Reduction",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\frac{\\text{KV}_{\\text{MHA}}}{\\text{KV}_{\\text{GQA}}} = \\frac{H}{G} \\\\[3pt] G = H \\Rightarrow \\text{MHA}, \\qquad G = 1 \\Rightarrow \\text{MQA} \\end{gathered}",
+    "concept": "H is the number of query heads, G the number of key/value groups. Query heads are untouched; each group of H/G query heads shares one K and one V projection, so the cache shrinks by exactly H/G. The saving is in the KV projections and the cache only \\u2014 attention FLOPs barely move, because K and V are broadcast back across their group before the matmul. G=H recovers plain MHA, G=1 is multi-query attention.",
+    "example": "LLaMA-2 70B: d_model=8192, H=64, d_h=128, L=80, G=8. Cache falls 8\\u00d7, from 84 GB to 10.5 GB at S=4096 fp16. W_K and W_V each shrink from 8192\\u00d78192 to 8192\\u00d71024, saving 117M params per layer and 9.4B across 80 layers. The checkpoint is produced by mean-pooling each group's K and V projections from an MHA model and uptraining on a small fraction of the original token budget, not by pretraining from scratch.",
+    "interview_question": "You have an MHA checkpoint that will not serve at your target concurrency. Compute what G you need to fit a batch of 16 at 4k context in 40 GB, and explain how you would obtain that checkpoint without pretraining again.",
+    "answer_points": [
+      "Cache scales linearly in G: solve 2\\u00b7L\\u00b7S\\u00b7G\\u00b7d_h\\u00b7b\\u00b7B \\u2264 40 GB for G and round down to a power of two",
+      "Query heads stay at H, so attention FLOPs are essentially unchanged \\u2014 this buys memory bandwidth and capacity, not compute",
+      "Convert by mean-pooling each group's K and V projection weights, then uptrain briefly on in-distribution data",
+      "G=1 (MQA) saves the most but costs quality and destabilises training; G\\u22488 is the usual knee",
+      "G must stay at or above the tensor-parallel degree, or KV heads have to be replicated across ranks and the memory saving partly evaporates"
+    ],
+    "tags": [
+      "gqa",
+      "mqa",
+      "kv-cache"
+    ],
+    "source_link": "https://arxiv.org/abs/2305.13245"
+  },
+  {
+    "id": "positional-rope-005",
+    "type": "formula",
+    "stage": "S4",
+    "category": "positional",
+    "topic": "RoPE",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\tilde{q}_m = q_m e^{i m \\theta}, \\quad \\theta_j = \\text{base}^{-2j/d} \\\\[3pt] \\langle \\tilde{q}_m, \\tilde{k}_n \\rangle = \\mathrm{Re}\\big[q_m \\bar{k}_n e^{i(m-n)\\theta}\\big] \\end{gathered}",
+    "concept": "Split each head's query and key into d/2 two-dimensional pairs and rotate pair j at position m by angle m\\u00b7\\u03b8_j, with \\u03b8_j = base^(\\u22122j/d). Because rotations are orthogonal, the dot product of a rotated query and a rotated key depends only on the offset m\\u2212n: absolute positions go in, a relative score comes out. Nothing is added to the residual stream \\u2014 RoPE touches Q and K only, inside every layer, and never V.",
+    "example": "LLaMA-2 has d_h=128, so 64 frequency pairs, base=10000. Wavelengths run from 2\\u03c0 \\u2248 6.3 tokens at j=0 to about 54000 tokens at j=63. At S=4096 only roughly the first 45 of 64 pairs ever complete a full rotation during training; the rest act as slowly varying absolute features. LLaMA-3 raises base to 500000, stretching the longest wavelength to about 2.5M tokens, which is what supports its 128k context.",
+    "interview_question": "Show that a rotary-embedded attention score depends only on m\\u2212n, then explain why feeding such a model sequences 8\\u00d7 longer than it trained on degrades sharply while position interpolation does not.",
+    "answer_points": [
+      "Rotations are orthogonal: \\u27e8R_m q, R_n k\\u27e9 = q^T R_m^T R_n k = q^T R_{n\\u2212m} k, so only the offset survives",
+      "High-frequency pairs wrap many times during training and stay in distribution; low-frequency pairs at large m reach angles never seen, and those out-of-distribution rotations wreck the score",
+      "Position interpolation rescales m by L_train/L_test so every angle stays inside the trained range, paying for it in high-frequency resolution",
+      "RoPE is re-applied per layer to Q and K only, never to V or the residual stream, so it does not accumulate with depth the way a learned absolute embedding does"
+    ],
+    "tags": [
+      "rope",
+      "positional",
+      "long-context"
+    ],
+    "source_link": "https://arxiv.org/abs/2104.09864"
+  },
+  {
+    "id": "positional-ntk-context-scaling-006",
+    "type": "formula",
+    "stage": "S4",
+    "category": "positional",
+    "topic": "NTK Context Scaling",
+    "difficulty": "hard",
+    "formula": "\\text{base}_{\\text{new}} = \\text{base}_{\\text{old}} \\cdot s^{\\frac{d}{d-2}}, \\qquad s = \\frac{L_{\\text{test}}}{L_{\\text{train}}}",
+    "concept": "NTK-aware scaling extends context by changing the RoPE base rather than the positions. Raising the base stretches low-frequency pairs by roughly the full factor s \\u2014 exactly where out-of-distribution angles appear \\u2014 while leaving high-frequency pairs almost untouched, so local token-order resolution survives. The d/(d\\u22122) exponent is chosen so the lowest-frequency pair lands at precisely s after scaling. Position interpolation instead divides every position by s and blurs all frequencies equally.",
+    "example": "LLaMA-2, d_h=128, base=10000, extending 4096 \\u2192 32768 gives s=8 and base_new = 10000\\u00b78^(128/126) \\u2248 8.3\\u00d710\\u2074. The lowest-frequency pair's wavelength moves from about 54000 to about 4.3\\u00d710\\u2075 tokens, comfortably past 32768, while the j=0 pair moves only from 6.28 to 6.29 tokens. Plain interpolation at s=8 would instead have stretched that j=0 wavelength to 50 tokens \\u2014 an 8\\u00d7 loss of local resolution.",
+    "interview_question": "You must take a 4k-trained RoPE model to 32k with only a few hundred fine-tuning steps. Compare NTK base scaling against position interpolation numerically at both ends of the frequency spectrum, and say which you ship.",
+    "answer_points": [
+      "PI divides all positions by s, so every wavelength stretches 8\\u00d7 including j=0, costing local order resolution uniformly",
+      "NTK scales the base, making the effect frequency-dependent: lowest pair stretched \\u2248s, highest pair essentially unchanged",
+      "The d/(d\\u22122) exponent exists so the j = d/2\\u22121 pair lands at exactly s \\u2014 it is not a fudge factor",
+      "NTK degrades if pushed zero-shot well past its target s; YaRN combines ramped per-band interpolation with an attention temperature term and needs far fewer tokens than PI to recover"
+    ],
+    "tags": [
+      "rope",
+      "long-context",
+      "yarn"
+    ],
+    "source_link": "https://arxiv.org/abs/2309.00071"
+  },
+  {
+    "id": "positional-alibi-007",
+    "type": "formula",
+    "stage": "S4",
+    "category": "positional",
+    "topic": "ALiBi",
+    "difficulty": "mid",
+    "formula": "\\text{score}_{ij} = \\frac{q_i \\cdot k_j}{\\sqrt{d_k}} - m_h\\,(i-j), \\qquad m_h = 2^{-8h/n}",
+    "concept": "No positional embedding at all. A fixed, non-learned linear penalty is subtracted from each attention logit in proportion to the distance between query i and key j. Head h gets its own slope m_h from a geometric sequence, so with n heads the slopes span 2^(\\u22128/n) down to 2^\\u22128. Small-slope heads see almost globally, large-slope heads behave as local windows. Nothing is added to Q, K, or the residual stream, so the penalty extends to any length for free.",
+    "example": "With n=16 heads the slopes run from 2^(\\u22120.5) = 0.71 down to 2^\\u22128 = 0.0039. At a distance of 1000 tokens the sharpest head subtracts 710 from its logit \\u2014 a hard zero after softmax \\u2014 while the flattest subtracts 3.9, about one e-fold of down-weighting. That spread across heads is why a 1024-trained ALiBi model still holds perplexity past 2048, where learned absolute embeddings have no values to use at all.",
+    "interview_question": "Your model must serve documents up to 3\\u00d7 the training length with no fine-tuning budget. Argue for or against ALiBi over RoPE, and explain what the per-head slope schedule actually buys you.",
+    "answer_points": [
+      "The bias is fixed and content-independent, added to logits pre-softmax, so there are no positional parameters that can go out of distribution",
+      "Geometric slopes give a head-wise mixture of receptive fields \\u2014 multi-scale local and global attention for free",
+      "The extrapolation is real but comes from recency bias, so it helps perplexity more than genuine long-range retrieval; test on needle-in-a-haystack, not just perplexity",
+      "The bias matrix is dense and length-dependent, so it fights fused kernels: FlashAttention needs an ALiBi-aware variant, whereas RoPE is applied to Q and K before the kernel and costs it nothing"
+    ],
+    "tags": [
+      "alibi",
+      "positional",
+      "extrapolation"
+    ],
+    "source_link": "https://arxiv.org/abs/2108.12409"
+  },
+  {
+    "id": "transformer-block-layernorm-006",
+    "type": "formula",
+    "stage": "S5",
+    "category": "transformer-block",
+    "topic": "LayerNorm",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} y = \\gamma \\odot \\frac{x - \\mu}{\\sqrt{\\sigma^{2} + \\epsilon}} + \\beta \\\\[3pt] \\mu = \\frac{1}{d}\\sum_{i} x_i, \\qquad \\sigma^{2} = \\frac{1}{d}\\sum_{i}(x_i - \\mu)^{2} \\end{gathered}",
+    "concept": "Statistics are taken across the feature dimension of a single token, never across the batch \\u2014 that is what makes it independent of batch size and sequence length, and what lets it behave identically at batch 1 during decoding. \\u03b3 and \\u03b2 restore the ability to express a non-zero-mean, non-unit-variance activation. \\u03b5 sits inside the square root and is typically 1e-5; placing it outside is a classic bug that surfaces in fp16 when \\u03c3\\u00b2 is small.",
+    "example": "GPT-3 d_model=12288: 2\\u00b712288 = 24576 params per LayerNorm, 2 per block, 96 blocks \\u2014 4.7M params, 0.003% of 175B. The backward pass, though, needs dL/dy, x\\u0302 and two reductions over d, touching roughly 4\\u00d7 the activation tensor. At batch 8 \\u00d7 2048 tokens \\u00d7 12288 in fp16 one activation tensor is 402 MB, so a single LayerNorm moves about 1.6 GB of HBM per step. That gap is why fusing it matters far more than its parameter count suggests.",
+    "interview_question": "Derive dL/dx for LayerNorm, then explain why the naive autograd version is memory-bound while a fused kernel is not \\u2014 and what changes if you move the norm from post- to pre-residual.",
+    "answer_points": [
+      "dL/dx = (\\u03b3/\\u03c3)\\u00b7[dL/dy \\u2212 mean(dL/dy) \\u2212 x\\u0302\\u00b7mean(dL/dy\\u00b7x\\u0302)]; the two mean terms appear because \\u03bc and \\u03c3 each depend on every x_i",
+      "That is two reductions over d plus elementwise work \\u2014 naive autograd materialises every intermediate to HBM, so it is bandwidth-bound and fusion collapses four tensor round-trips into one",
+      "Pre-LN puts the norm inside the residual branch, leaving the identity path unnormalised so gradients reach layer 0 unattenuated and warmup becomes optional; Post-LN diverges at depth without careful warmup",
+      "\\u03b5 must be inside the sqrt, and in fp16 the mean and variance reductions must accumulate in fp32 or \\u03c3\\u00b2 underflows on near-zero activations"
+    ],
+    "tags": [
+      "normalization",
+      "backprop",
+      "kernels"
+    ],
+    "source_link": "https://arxiv.org/abs/1607.06450"
+  },
+  {
+    "id": "transformer-block-rmsnorm-007",
+    "type": "formula",
+    "stage": "S5",
+    "category": "transformer-block",
+    "topic": "RMSNorm",
+    "difficulty": "mid",
+    "formula": "y = \\gamma \\odot \\frac{x}{\\mathrm{RMS}(x)}, \\qquad \\mathrm{RMS}(x) = \\sqrt{\\frac{1}{d}\\sum_{i=1}^{d} x_i^{2} + \\epsilon}",
+    "concept": "Drops both the mean subtraction and the \\u03b2 shift, leaving only re-scaling. The bet is that LayerNorm's benefit comes from scale invariance rather than re-centring, and empirically that holds. The result is one reduction instead of two dependent ones, one learnable vector instead of two, and no \\u03bc to keep for the backward pass \\u2014 cheaper in traffic and in registers. Every major open model since LLaMA has used it.",
+    "example": "LLaMA-2 7B: d_model=4096, so 4096 params per norm against LayerNorm's 8192; at 2 per block over 32 blocks that is 262k versus 524k params, negligible either way. The real win is the kernel: \\u03a3x\\u00b2 is a single reduction, whereas LayerNorm cannot start \\u03c3\\u00b2 until \\u03bc is finished \\u2014 two dependent block-wide syncs per 4096-wide row. Meta kept RMSNorm through LLaMA-3 405B for exactly that reason.",
+    "interview_question": "RMSNorm removes mean-centring and the bias term, yet quality holds. Explain what invariance the normalisation is actually providing, then describe a regime where dropping the centring would hurt you.",
+    "answer_points": [
+      "The property that matters is invariance to rescaling of the input row; re-centring is not what stabilises training",
+      "One reduction instead of two dependent ones, no \\u03bc stored for backward, one learnable vector instead of two",
+      "With no \\u03b2, any needed offset must come from the following linear layer \\u2014 models that also drop biases lean on the residual stream to carry it",
+      "If activations carry a large shared DC component, RMS is dominated by that offset and the normalised output loses dynamic range; this is part of why RMSNorm models are sensitive to outlier channels and why schemes like SmoothQuant target exactly those"
+    ],
+    "tags": [
+      "normalization",
+      "llama",
+      "kernels"
+    ],
+    "source_link": "https://arxiv.org/abs/1910.07467"
+  },
+  {
+    "id": "transformer-block-swiglu-008",
+    "type": "formula",
+    "stage": "S5",
+    "category": "transformer-block",
+    "topic": "SwiGLU",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\text{SwiGLU}(x) = \\big(\\mathrm{SiLU}(xW_{\\text{gate}}) \\odot xW_{1}\\big)W_{2} \\\\[3pt] \\mathrm{SiLU}(z) = z\\,\\sigma(z) \\end{gathered}",
+    "concept": "A gated linear unit: one projection produces values, a second produces a multiplicative gate passed through SiLU, and their elementwise product is projected back down. The gate lets the layer suppress or pass each hidden unit conditionally on the input, which a plain ReLU or GELU MLP cannot do. The cost is three weight matrices instead of two, so the hidden width is cut to 8/3\\u00b7d_model to keep the parameter count level with a 4\\u00d7 ReLU FFN.",
+    "example": "LLaMA-2 7B, d_model=4096. A 4\\u00d7 ReLU FFN would be 2\\u00b74096\\u00b716384 = 134M params per layer. SwiGLU uses hidden = 8/3\\u00b74096 = 10923, rounded up to 11008 for alignment, over three matrices: 3\\u00b74096\\u00b711008 = 135M \\u2014 the same budget. Across 32 layers that is 4.3B of the model's 6.7B, against 2.15B in attention, so the FFN is where most of a modern 7B actually lives.",
+    "interview_question": "Given a fixed parameter budget for the FFN block, derive the hidden width that makes SwiGLU parameter-neutral against a 4\\u00d7 ReLU MLP, then justify whether you would spend the budget there at all.",
+    "answer_points": [
+      "Three d\\u00d7h matrices versus two d\\u00d74d matrices: 3dh = 8d\\u00b2 gives h = 8/3\\u00b7d",
+      "In practice h is rounded to a multiple of 256 \\u2014 11008 for LLaMA-2 7B \\u2014 so the GEMM tiles cleanly on tensor cores",
+      "The gate is the actual mechanism: a multiplicative interaction, not merely a different nonlinearity",
+      "The extra matrix costs a third GEMM and another activation tensor, so SwiGLU is slightly worse for memory-bound decode even at equal parameters; gate and up are usually fused into one 2h-wide GEMM to claw that back"
+    ],
+    "tags": [
+      "ffn",
+      "swiglu",
+      "activation"
+    ],
+    "source_link": "https://arxiv.org/abs/2002.05202"
+  },
+  {
+    "id": "training-scale-clm-loss-ppl-005",
+    "type": "formula",
+    "stage": "S8",
+    "category": "training-scale",
+    "topic": "CLM Loss + PPL",
+    "difficulty": "mid",
+    "formula": "\\mathcal{L} = -\\frac{1}{N}\\sum_{i=1}^{N} \\log P_{\\theta}\\!\\left(x_{i+1} \\mid x_{\\leq i}\\right), \\qquad \\text{PPL} = e^{\\mathcal{L}}",
+    "concept": "Cross-entropy of the next token, averaged over the N supervised positions. Every position is trained in parallel but each is conditioned only on its causal prefix, which is what makes one forward pass worth N gradient signals. Perplexity exponentiates the loss back into an interpretable unit: the effective number of equally likely tokens the model is choosing among. Using natural log the loss is in nats and PPL = e^L; using log base 2 it is bits per token and PPL = 2^L.",
+    "example": "Uniform guessing over GPT-2's 50257-token vocabulary gives L = ln 50257 = 10.82 nats, PPL = 50257. A trained GPT-2 medium sits near L = 3.0, PPL ≈ 20. Cutting loss by exactly ln 2 = 0.69 nats halves perplexity, 20 → 10, which is why the last tenths of a nat cost so much compute: the scaling curve is a power law in loss, and perplexity magnifies small loss moves into large-looking ones.",
+    "interview_question": "Team A reports perplexity 12 and team B reports 9 on the same corpus, and B claims the better model. What do you check before believing it, and how much loss does that 3-point gap actually represent?",
+    "answer_points": [
+      "PPL = e^L, so 12 → 9 is ln(12/9) = 0.29 nats — a small absolute move on the loss curve, not a 25% improvement in anything",
+      "Perplexity is per token, so it is meaningless across different tokenisers: a tokeniser that splits more finely earns lower per-token loss for free. Normalise to bits per byte to compare",
+      "Check the evaluation stride — sliding-window scoring with full context beats non-overlapping chunks on the identical model",
+      "Check test-set contamination, and whether the mean is taken per token or per document; per-document averaging silently over-weights short documents"
+    ],
+    "tags": [
+      "loss",
+      "perplexity",
+      "evaluation"
+    ],
+    "source_link": "https://arxiv.org/abs/2001.08361"
+  },
+  {
+    "id": "training-scale-chinchilla-optimal-006",
+    "type": "formula",
+    "stage": "S8",
+    "category": "training-scale",
+    "topic": "Chinchilla Optimal",
+    "difficulty": "hard",
+    "formula": "D_{\\text{opt}} \\approx 20\\,N, \\qquad C \\approx 6ND \\ \\Rightarrow \\ C \\approx 120\\,N^{2}",
+    "concept": "For a fixed training compute budget C, loss is minimised when parameters N and training tokens D grow in roughly equal proportion — about 20 tokens per parameter. Earlier scaling work scaled N far faster than D and produced undertrained giants. The crucial limitation: this is compute-optimality at training time only. It says nothing about inference, where a smaller model trained well past 20N is cheaper to serve at equal quality.",
+    "example": "GPT-3: N=175B, D=300B, only 1.7 tokens per parameter against the optimal 20, at 6ND = 3.2×10²³ FLOPs. Chinchilla is 70B on 1.4T tokens, 5.9×10²³ FLOPs, matching Gopher's 280B-on-300B budget of 5.0×10²³ and beating it broadly with 4× fewer parameters. Compute-optimal GPT-3 would have needed 20·175B = 3.5T tokens. LLaMA-3 8B deliberately goes the other way: 15T tokens, 1875 tokens per parameter, 94× past Chinchilla.",
+    "interview_question": "You have a fixed 10²³ FLOP training budget and the model will serve 10¹² tokens of production traffic. Compute the Chinchilla-optimal size, then argue whether you should actually train that model.",
+    "answer_points": [
+      "C = 6ND with D = 20N gives C = 120N², so N = √(C/120) — at 10²³ that is about 29B parameters on 580B tokens",
+      "Chinchilla minimises training loss per training FLOP and ignores inference completely",
+      "Inference costs about 2N FLOPs per token, so 10¹² served tokens on a 29B model is 5.8×10²² FLOPs — over half the training budget, paid again and again",
+      "So the right move is usually smaller-and-longer than Chinchilla: the loss penalty for overtraining an 8B is small and the curve is near-flat there, while serving cost scales linearly in N forever",
+      "The 20× ratio is also data-dependent — it was fitted on a specific corpus, and repeated-epoch data does not count the same as fresh tokens"
+    ],
+    "tags": [
+      "scaling-laws",
+      "chinchilla",
+      "compute"
+    ],
+    "source_link": "https://arxiv.org/abs/2203.15556"
+  },
+  {
+    "id": "training-scale-training-flops-007",
+    "type": "formula",
+    "stage": "S8",
+    "category": "training-scale",
+    "topic": "Training FLOPs",
+    "difficulty": "mid",
+    "formula": "C_{\\text{train}} \\approx 6ND, \\qquad \\underbrace{2ND}_{\\text{forward}} + \\underbrace{4ND}_{\\text{backward}}",
+    "concept": "Each parameter takes part in one multiply and one add per token in the forward pass, giving 2N FLOPs per token. The backward pass computes gradients with respect to both activations and weights — two more passes of the same size — giving 4N. Total 6N per token over D tokens. The estimate drops attention's quadratic term, which is safe while S is small against d_model, and treats normalisation and softmax as lower order.",
+    "example": "LLaMA-2 7B on 2T tokens: 6·7×10⁹·2×10¹² = 8.4×10²² FLOPs. On 1024 A100s at 312 TFLOP/s bf16 and a realistic 40% MFU, effective throughput is 1.28×10¹⁷ FLOP/s, so the run takes 6.6×10⁵ s — about 7.6 days. The neglected attention term scales as S/(6·d_model) = 4096/24576 ≈ 17%, so at 4k context this estimate runs low by roughly that much.",
+    "interview_question": "A director asks how long a 70B run on 3T tokens will take on your 2048-H100 cluster, and what it will cost. Derive it end to end, then state the assumption most likely to make you wrong.",
+    "answer_points": [
+      "6ND = 6·70×10⁹·3×10¹² = 1.26×10²⁴ FLOPs",
+      "H100 SXM is ~990 TFLOP/s dense bf16; at 2048 GPUs and 40% MFU that is 8.1×10¹⁷ effective FLOP/s → 1.55×10⁶ s ≈ 18 days",
+      "The 6 decomposes as 2 forward + 4 backward, because backward produces both activation and weight gradients",
+      "MFU is the assumption that kills the estimate — it swings between 25% and 55% with parallelism strategy, sequence length and interconnect, and activation recomputation adds roughly another 1N–2N per token, pushing the constant from 6 toward 8"
+    ],
+    "tags": [
+      "flops",
+      "mfu",
+      "capacity-planning"
+    ],
+    "source_link": "https://arxiv.org/abs/2001.08361"
+  },
+  {
+    "id": "training-scale-training-memory-adam-008",
+    "type": "formula",
+    "stage": "S8",
+    "category": "training-scale",
+    "topic": "Training Memory (Adam)",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} M \\approx \\underbrace{2P}_{\\text{bf16 weights}} + \\underbrace{2P}_{\\text{bf16 grads}} \\\\[3pt] +\\ \\underbrace{4P + 4P + 4P}_{\\text{fp32 master},\\ m,\\ v}\\ =\\ 16P \\text{ bytes} \\end{gathered}",
+    "concept": "Mixed-precision AdamW keeps bf16 weights and gradients for the math, plus an fp32 master copy of the weights and the two fp32 moment estimates used by the update rule. That is 2+2+4+4+4 = 16 bytes per parameter, before a single activation is stored. Activations are a separate budget scaling with batch × sequence × layers, and they are what activation checkpointing trades away for recompute.",
+    "example": "A 7B model: 16·7×10⁹ = 112 GB of weights, gradients and optimizer state alone — already past one 80 GB H100 before any activations. ZeRO stage 3 shards all three across ranks, so on 8 GPUs it is 14 GB each. Switching to 8-bit Adam moments takes m and v from 4P to 1P each, dropping 16P to 10P, or 70 GB, which then fits on a single card.",
+    "interview_question": "Your 7B run OOMs on 8×80 GB with a batch size that should comfortably fit. Account for every byte, then order the fixes by what each costs you in throughput.",
+    "answer_points": [
+      "16 bytes per parameter for mixed-precision AdamW: 2 bf16 weights + 2 grads + 4 fp32 master + 4 m + 4 v = 112 GB at 7B",
+      "Activations are the other half of the budget and scale with batch × seq × L — they are what actually varies run to run",
+      "Order by cost: ZeRO-2 then ZeRO-3 (pays in communication, not compute), 8-bit optimizer states (nearly free), activation checkpointing (~30% throughput), gradient accumulation last",
+      "The fp32 master copy is not optional — bf16 has 8 mantissa bits, and a typical update is 10⁻⁴ of the weight, so updating bf16 weights directly rounds most updates to zero"
+    ],
+    "tags": [
+      "memory",
+      "adamw",
+      "zero"
+    ],
+    "source_link": "https://arxiv.org/abs/1910.02054"
+  },
+  {
+    "id": "peft-lora-058",
+    "type": "formula",
+    "stage": "S9",
+    "category": "peft",
+    "topic": "LoRA",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} W' = W_{0} + \\frac{\\alpha}{r} BA \\\\[3pt] B \\in \\mathbb{R}^{d_{\\text{out}} \\times r}, \\quad A \\in \\mathbb{R}^{r \\times d_{\\text{in}}} \\\\[3pt] |\\theta| = r\\,(d_{\\text{in}} + d_{\\text{out}}) \\end{gathered}",
+    "concept": "Freeze W₀ and learn a rank-r update factored as BA. A starts from a normal distribution and B starts at exactly zero, so BA = 0 at step 0 and training begins precisely at the base checkpoint. The α/r scaling keeps the effective step size roughly independent of r, so sweeping rank does not require re-sweeping the learning rate. At inference BA folds back into W₀, adding zero latency.",
+    "example": "LLaMA-2 7B with r=16 on all linear layers: q,k,v,o are 4096×4096, giving 4·16·8192 = 524k params; the FFN's gate, up and down involve 4096 and 11008, giving 3·16·15104 = 725k. That is 1.25M per layer, 40M across 32 layers — 0.6% of 6.7B. Optimizer state falls from 112 GB to 640 MB, which combined with a 4-bit frozen base is what puts a 7B tune on one 24 GB consumer card.",
+    "interview_question": "You raise LoRA rank from 8 to 64, memory climbs, and quality barely moves. Explain what r is actually controlling, and name the change that would have helped more.",
+    "answer_points": [
+      "r bounds the rank of the update, not its magnitude — task adaptation is genuinely low-rank, so marginal gain past r≈16 is small on typical SFT data",
+      "α/r holds the effective scale fixed across r, so the LR needs no retuning; people who omit it confound rank changes with LR changes",
+      "Which modules you attach to matters more than r: attention-only can reach at most a third of the body, and adding the FFN projections usually beats doubling rank",
+      "B=0 at init is what makes attaching a LoRA anywhere safe — no warmup, no quality cliff at step 0",
+      "QLoRA's win is orthogonal to rank: it quantises the frozen base to NF4, taking 14 GB of base weights to 3.5 GB, which is the actual single-GPU enabler"
+    ],
+    "tags": [
+      "lora",
+      "peft",
+      "fine-tuning"
+    ],
+    "source_link": "https://arxiv.org/abs/2106.09685"
+  },
+  {
+    "id": "alignment-bradley-terry-rm-loss-008",
+    "type": "formula",
+    "stage": "S10",
+    "category": "alignment",
+    "topic": "Bradley-Terry RM Loss",
+    "difficulty": "hard",
+    "formula": "\\mathcal{L}_{\\text{RM}} = -\\mathbb{E}_{(x, y_w, y_l) \\sim \\mathcal{D}}\\Big[\\log \\sigma\\big(r_{\\phi}(x, y_w) - r_{\\phi}(x, y_l)\\big)\\Big]",
+    "concept": "Bradley-Terry models the probability a human prefers y_w over y_l as σ of the reward difference, and training maximises the log-likelihood of the observed rankings. Only the difference of rewards is identified — the absolute scale and any per-prompt offset are unconstrained, so a raw reward number carries no meaning on its own. The reward model is normally the SFT policy with its unembedding swapped for a scalar head reading the final token.",
+    "example": "InstructGPT trains its reward model from the 6B SFT checkpoint on roughly 33k prompts, each with K=4 to 9 completions ranked by labellers. All C(K,2) pairs from one prompt go into a single gradient step — 36 pairs at K=9 — because splitting them across batches makes each completion appear 8 times as an apparently independent example and overfits hard. Calibration: a reward gap of 1.0 predicts σ(1) = 73% preference, a gap of 3.0 predicts 95%.",
+    "interview_question": "Your reward model hits 78% pairwise accuracy on held-out preferences, but PPO against it yields long, hedging answers humans dislike. Diagnose it, and say what the loss itself cannot tell you.",
+    "answer_points": [
+      "Only reward differences are identified, so the scale is arbitrary — normalise per prompt before comparing anything across prompts",
+      "78% is close to the ceiling set by labeller agreement, so the RM is not undertrained; the failure is out-of-distribution generalisation",
+      "PPO drives the policy into regions the RM never saw ranked, where it extrapolates badly — that is reward hacking, and verbosity is its most common expression",
+      "Gate on RM accuracy over on-policy samples, not the static validation set, which stops being representative after a few PPO steps; and penalise length explicitly or debias the preference data"
+    ],
+    "tags": [
+      "rlhf",
+      "reward-model",
+      "bradley-terry"
+    ],
+    "source_link": "https://arxiv.org/abs/2203.02155"
+  },
+  {
+    "id": "alignment-rlhf-objective-009",
+    "type": "formula",
+    "stage": "S10",
+    "category": "alignment",
+    "topic": "RLHF Objective",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\max_{\\pi_{\\theta}}\\ \\mathbb{E}_{x \\sim \\mathcal{D},\\, y \\sim \\pi_{\\theta}}\\big[r_{\\phi}(x, y)\\big] \\\\[3pt] -\\ \\beta\\, \\mathbb{D}_{\\text{KL}}\\big[\\pi_{\\theta}(y \\mid x) \\,\\|\\, \\pi_{\\text{ref}}(y \\mid x)\\big] \\end{gathered}",
+    "concept": "Maximise reward while staying near the reference SFT policy, with β pricing the drift. The KL term is not a safety bolt-on — it is what keeps the policy inside the distribution where the reward model was actually trained and therefore still means something. The objective has a closed-form optimum, π*(y|x) ∝ π_ref(y|x)·exp(r(x,y)/β), a Boltzmann tilt of the reference by the reward. That identity is exactly what DPO exploits.",
+    "example": "PPO implements this by folding the KL into the per-token reward: r_t = −β·log(π_θ(y_t)/π_ref(y_t)), with the RM score added only at the final token. At β=0.02, a policy drifting 2 nats per token over a 200-token completion accumulates 400 nats of KL and pays 8 reward units back — so an RM score of 12 nets out at 4. Runs are monitored on total KL and halted past a few hundred nats, because that is where reward hacking shows up.",
+    "interview_question": "Derive the optimal policy for the KL-regularised reward objective, then explain what β=0 and β→∞ each give you and how you would actually pick β.",
+    "answer_points": [
+      "Optimise over the distribution π per prompt: the solution is π*(y|x) = π_ref(y|x)·exp(r(x,y)/β) / Z(x)",
+      "β=0 is pure reward maximisation and collapses onto whatever the RM overrates; β→∞ returns the SFT model untouched",
+      "Z(x) is intractable, which is why you cannot sample π* directly and must run PPO — or use DPO, which cancels Z by working on pairs",
+      "Do not fix β: target a KL budget instead. Adaptive-KL controllers adjust β each iteration to hold KL near target, because the right β moves as the policy does"
+    ],
+    "tags": [
+      "rlhf",
+      "kl",
+      "ppo"
+    ],
+    "source_link": "https://arxiv.org/abs/2203.02155"
+  },
+  {
+    "id": "alignment-dpo-loss-010",
+    "type": "formula",
+    "stage": "S10",
+    "category": "alignment",
+    "topic": "DPO Loss",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\mathcal{L}_{\\text{DPO}} = -\\mathbb{E}\\Big[\\log \\sigma\\big(\\beta\\,\\hat{r}(y_w) - \\beta\\,\\hat{r}(y_l)\\big)\\Big] \\\\[3pt] \\hat{r}(y) = \\log \\frac{\\pi_{\\theta}(y \\mid x)}{\\pi_{\\text{ref}}(y \\mid x)} \\end{gathered}",
+    "concept": "Substitute the closed-form RLHF optimum back into the Bradley-Terry likelihood and the intractable partition function Z(x) cancels, because it is identical for y_w and y_l. What is left is a supervised classification loss over preference pairs, with an implicit reward r(x,y) = β·log(π_θ/π_ref). No reward model, no sampling loop, no value network — but π_ref must still be scored on both completions.",
+    "example": "Zephyr-7B was DPO-tuned from a Mistral-7B SFT base on roughly 62k UltraFeedback preference pairs at β=0.1, in a few GPU-hours. PPO needs four models resident — policy, reference, reward, value — while DPO needs two, and the reference log-probabilities can be precomputed offline once, taking it to one. At β=0.1 an implicit reward gap of 1.0 requires the policy to move its log-probability ratio by 10 nats.",
+    "interview_question": "DPO removes the reward model entirely. Show where the partition function goes, then say what you give up relative to PPO and when that actually bites.",
+    "answer_points": [
+      "Invert π* = π_ref·exp(r/β)/Z to get r = β·log(π_θ/π_ref) + β·log Z(x); in the Bradley-Terry difference the β·log Z terms cancel because Z depends only on x",
+      "The result is binary cross-entropy on pairs: stable, off-policy, no sampling, no value network",
+      "What is lost is on-policy exploration — DPO only sees the fixed preference set and cannot discover anything better than what is already in it",
+      "The gradient pushes log π(y_l) down as hard as it pushes log π(y_w) up, so with noisy or off-policy pairs probability mass drains to neither and the model degrades — which is why iterative/online DPO, or an added SFT term on y_w, is now standard"
+    ],
+    "tags": [
+      "dpo",
+      "alignment",
+      "preference-learning"
+    ],
+    "source_link": "https://arxiv.org/abs/2305.18290"
+  },
+  {
+    "id": "inference-symmetric-int8-063",
+    "type": "formula",
+    "stage": "S11",
+    "category": "inference",
+    "topic": "Symmetric INT8",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} s = \\frac{\\max|x|}{127}, \\qquad \\hat{x} = s\\,q \\\\[3pt] q = \\mathrm{clip}\\!\\big(\\mathrm{round}(x/s),\\, -127,\\, 127\\big) \\end{gathered}",
+    "concept": "Symmetric means zero maps to zero, so there is no zero-point and the dequantised matmul is an integer GEMM times a scale, with no cross terms to correct. Using 127 rather than 128 keeps the range symmetric about zero. The decision that actually matters is granularity: one scale per tensor is cheapest, but a single outlier sets the scale for everything, while per-channel gives one scale per output neuron for the price of a vector.",
+    "example": "Take a weight row spanning [−0.42, 0.38] with one outlier at 6.1. Per-tensor: s = 6.1/127 = 0.048, so 0.38 becomes round(7.9) = 8 and the entire normal range occupies 9 of 127 levels — under 3.3 effective bits of the 8 you paid for. Per-channel puts that outlier in its own channel and the rest get s = 0.42/127 = 0.0033, using the full range. That is why per-channel weights with per-token activations is the default.",
+    "interview_question": "INT8 weight-only quantisation of your 13B model is lossless, but enabling INT8 activations costs 4 points on your eval. Explain the asymmetry and describe the fix that does not drop back to fp16.",
+    "answer_points": [
+      "Weights are static and well-conditioned per channel; activations are dynamic and, above roughly 6.7B parameters, develop systematic outlier channels 20–100× the typical magnitude",
+      "A per-tensor activation scale is then set by those outliers and the useful range collapses to a few effective bits",
+      "Fix with per-token dynamic activation scales, plus SmoothQuant, which migrates outlier magnitude from activations into weights through a per-channel diagonal rescale the GEMM absorbs for free",
+      "LLM.int8() instead keeps outlier channels in fp16 and runs a mixed decomposition — correct, but slower, because it breaks the single fused INT8 GEMM"
+    ],
+    "tags": [
+      "quantization",
+      "int8",
+      "outliers"
+    ],
+    "source_link": "https://arxiv.org/abs/2211.10438"
+  },
+  {
+    "id": "inference-spec-decoding-speedup-064",
+    "type": "formula",
+    "stage": "I7",
+    "category": "inference",
+    "topic": "Spec Decoding Speedup",
+    "difficulty": "hard",
+    "formula": "\\mathbb{E}[\\text{speedup}] = \\frac{1 - \\alpha^{\\,k+1}}{(1 - \\alpha)\\,(1 + k c)}",
+    "concept": "A draft model proposes k tokens; the target verifies all k+1 positions in one forward pass and accepts the longest prefix consistent with its own distribution. α is the per-token acceptance rate, so expected accepted length is the truncated geometric sum (1−α^(k+1))/(1−α). c is the draft's cost as a fraction of one target step, making 1+kc the cost of a verify round. Rejection sampling makes the output distribution exactly the target's — this is lossless, not an approximation.",
+    "example": "α=0.8, k=4, c=0.1: expected accepted length is (1−0.8⁵)/0.2 = 3.36 tokens for a round costing 1+0.4 = 1.4 target-steps, so 2.4×. The optimum sits near k=6 at 2.47×, and by k=12 it has fallen back to 2.15×, because accepted length saturates at 1/(1−α) = 5 while cost keeps growing linearly in k. Drop α to 0.6 and k=3 yields only 2.18/1.3 = 1.7×.",
+    "interview_question": "Speculative decoding gives you 2.4× at batch 1 but nothing at batch 32. Explain why the formula stops applying, and say when you would still ship it.",
+    "answer_points": [
+      "Accepted length is a truncated geometric capped at 1/(1−α), so raising k has sharply diminishing returns while the draft cost kc grows linearly — there is an interior optimum",
+      "The entire win depends on decode being memory-bound: verifying k+1 positions costs about the same as verifying 1 because the target's weights are read once either way",
+      "At batch 32 the GPU is already compute-saturated, the extra verification FLOPs are no longer free, and speedup collapses toward 1 or below",
+      "It is exact rather than approximate, so it needs no quality sign-off the way quantisation does — ship it for latency-sensitive low-batch traffic, and prefer self-speculation heads like Medusa or EAGLE so there is no second model to serve"
+    ],
+    "tags": [
+      "speculative-decoding",
+      "latency",
+      "decode"
+    ],
+    "source_link": "https://arxiv.org/abs/2211.17192"
+  },
+  {
+    "id": "inference-arithmetic-intensity-065",
+    "type": "formula",
+    "stage": "I1",
+    "category": "inference",
+    "topic": "Arithmetic Intensity",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} AI = \\frac{\\text{FLOPs}}{\\text{bytes moved}} \\\\[3pt] \\text{compute-bound} \\iff AI > AI_{\\text{ridge}} = \\frac{\\text{peak FLOP/s}}{\\text{peak bandwidth}} \\end{gathered}",
+    "concept": "Arithmetic intensity is FLOPs performed per byte moved from HBM. The ridge point is the hardware's peak FLOP/s divided by its peak bandwidth. A kernel below the ridge can never reach peak FLOPs however well it is written, because it starves waiting on memory; above it, memory is not the constraint. This one number decides whether an optimisation should target FLOPs or bytes — get it wrong and you optimise the side that is not binding.",
+    "example": "A100 80GB: 312 TFLOP/s bf16 over 2039 GB/s gives a ridge of 153 FLOP/byte. Batch-1 fp16 decode does 2N FLOPs while moving 2N bytes of weights, so AI = 1.0 — 153× below the ridge, and the GPU delivers about 1/153 of peak. Since the weights are read once per step regardless of batch, decode AI simply equals the batch size: you need roughly 153 concurrent sequences to reach the ridge. On an H100 the ridge is 990/3.35 = 295, so the target is higher still.",
+    "interview_question": "Your decode throughput sits at 1/100th of the GPU's peak FLOPs and a colleague proposes INT8 weights to 'add more compute'. Compute the arithmetic intensity, say whether they are right, and give the number that settles it.",
+    "answer_points": [
+      "AI = FLOPs/bytes and ridge = peak FLOP/s ÷ peak bandwidth: 153 on an A100, about 295 on an H100",
+      "fp16 batch-1 decode has AI = 2N/2N = 1, so it is memory-bound by two orders of magnitude and adding compute changes nothing",
+      "INT8 does help, but for the memory reason not the compute one — it halves the bytes moved, doubling AI and roughly doubling decode throughput",
+      "Decode AI equals the batch size, so the highest-leverage fix is raising concurrency via continuous batching, and that is capped by KV cache capacity — which routes straight back to GQA and paged attention"
+    ],
+    "tags": [
+      "roofline",
+      "memory-bound",
+      "gpu"
+    ],
+    "source_link": "https://arxiv.org/abs/2007.00072"
+  },
+  {
+    "id": "inference-llm-decode-tpot-066",
+    "type": "formula",
+    "stage": "I2",
+    "category": "inference",
+    "topic": "LLM Decode TPOT",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\text{TPOT} \\approx \\frac{\\text{bytes}_{\\text{weights}} + \\text{bytes}_{\\text{KV read}}}{\\text{TP} \\cdot \\text{BW}_{\\text{GPU}}} \\\\[3pt] \\text{E2E} = \\text{TTFT} + (N_{\\text{out}} - 1)\\,\\text{TPOT} \\end{gathered}",
+    "concept": "Time per output token in decode is set by how long it takes to stream the weights out of HBM, not by arithmetic. Each generated token requires reading every weight once, plus the KV cache of the sequences in flight. Dividing by the tensor-parallel degree splits the weights across devices, so TPOT falls roughly linearly in TP until the per-layer all-reduce starts to dominate. This is why decode latency is a bandwidth calculation.",
+    "example": "LLaMA-2 70B in fp16 is 140 GB. With TP=4 on A100s each GPU holds 35 GB and streams it at about 2 TB/s: 35/2000 = 17.5 ms per token, roughly 57 tokens/s, and measured numbers land close because decode really is bandwidth-bound. At 4k context the KV cache adds 10.5 GB per sequence, 2.6 GB per GPU, taking TPOT to about 18.8 ms. A 500-token answer is then 9.4 s of decode on top of TTFT.",
+    "interview_question": "A product owner wants a 70B to stream at 30 tokens per second per user and you have A100s. Work out whether it is possible, what tensor-parallel degree it needs, and what breaks first as you scale that up.",
+    "answer_points": [
+      "30 tok/s means TPOT ≤ 33 ms, so ≤66 GB may be read per GPU per token: TP=2 gives 70/2000 = 35 ms (marginal), TP=4 gives 17.5 ms comfortably",
+      "This is a bandwidth calculation, not a FLOPs one — the GPU sits at a few percent of peak compute throughout decode",
+      "TP scaling is not free: every layer ends in an all-reduce over d_model, so beyond TP=8 (one NVLink domain) the collective over PCIe or InfiniBand dominates and TPOT stops improving",
+      "Per-user TPOT and fleet throughput pull opposite ways — raising batch leaves TPOT nearly unchanged while multiplying throughput — so quote both, and note TPOT drifts upward within a request as its KV cache grows"
+    ],
+    "tags": [
+      "tpot",
+      "latency",
+      "decode",
+      "tensor-parallel"
+    ],
+    "source_link": "https://arxiv.org/abs/2211.05102"
+  },
+  {
+    "id": "inference-llm-prefill-ttft-067",
+    "type": "formula",
+    "stage": "I2",
+    "category": "inference",
+    "topic": "LLM Prefill TTFT",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\text{TTFT} \\approx \\frac{2\\,N_{\\text{params}}\\,S}{\\text{FLOP/s}_{\\text{eff}}} \\approx \\frac{12\\,L\\,d^{2}\\,S}{\\text{FLOP/s}_{\\text{eff}}} \\\\[3pt] \\text{FLOP/s}_{\\text{eff}} = \\text{peak} \\times \\text{MFU} \\end{gathered}",
+    "concept": "Prefill processes the entire prompt in one pass, so it is compute-bound: S tokens at 2N FLOPs each. Substituting N = 12Ld² for the body gives the second form. Effective throughput is peak times MFU, and prefill achieves high MFU precisely because each layer is one large GEMM. Unlike decode, TTFT grows linearly in prompt length — until attention's S² term becomes a material share of the total.",
+    "example": "LLaMA-2 7B on one A100 at 312 TFLOP/s and 50% MFU, so 156 TFLOP/s effective. A 512-token prompt is 2·7×10⁹·512 = 7.2 TFLOPs → 46 ms. A 2048-token prompt is 4× that, 29 TFLOPs → 184 ms. The neglected attention term scales as S/(6·d_model) = 2048/24576 ≈ 8% at 2k, rising to 33% at 8k — so linearity is a good approximation to a few thousand tokens and then bends upward.",
+    "interview_question": "TTFT is 180 ms at 2k prompts against a 200 ms SLA, and users have started pasting 8k documents. Predict the new TTFT, then propose two ways to hold the SLA that do not involve buying more GPUs.",
+    "answer_points": [
+      "The linear term scales 4×, 184 ms → 736 ms, and the attention S² term grows from 8% to 33% of the total, putting it near 950 ms",
+      "Prefill is compute-bound and already at high MFU, so there is no per-request efficiency headroom left to reclaim",
+      "Prefix caching removes prefill entirely for shared system prompts and repeated documents; chunked prefill splits a long prompt so it interleaves with decode instead of blocking the batch",
+      "The structural fix is disaggregating prefill and decode onto separate pools — they have opposite bottlenecks, so co-locating them lets one long prefill stall every decode in flight, which appears as SLA misses under load and never in single-request benchmarks"
+    ],
+    "tags": [
+      "ttft",
+      "prefill",
+      "latency",
+      "mfu"
+    ],
+    "source_link": "https://arxiv.org/abs/2308.16369"
+  },
+  {
+    "id": "inference-fa-io-complexity-068",
+    "type": "formula",
+    "stage": "I4",
+    "category": "inference",
+    "topic": "FA IO complexity",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} \\text{FlashAttention:}\\ \\ \\Theta\\!\\left(\\frac{N^{2} d^{2}}{M}\\right)\\ \\text{HBM accesses} \\\\[3pt] \\text{standard:}\\ \\ \\Theta\\!\\left(N d + N^{2}\\right) \\end{gathered}",
+    "concept": "FlashAttention never materialises the N×N attention matrix in HBM. It tiles Q, K and V into blocks sized for on-chip SRAM, computes the softmax online with a running maximum and running normaliser, and rescales the accumulated output as each new K/V block arrives. M is the SRAM size, so larger on-chip memory means fewer passes over K and V. The result is numerically exact, not an approximation.",
+    "example": "One head at N=2048, d_h=64, fp16. Standard attention materialises a 2048×2048 score matrix — 8.4 MB — and writes then re-reads it for the softmax, moving roughly 33 MB per head. FlashAttention tiles into the A100's 192 KB of per-SM shared memory and moves only Q, K, V and O: 4·2048·64·2 bytes = 1.0 MB, about 30× less. It does slightly more arithmetic and is still far faster.",
+    "interview_question": "FlashAttention is often described as making attention O(N) in memory. State precisely what is O(N) and what is not, then explain why it wins on wall clock despite doing strictly more arithmetic.",
+    "answer_points": [
+      "Memory is O(N) because the N×N score matrix is never materialised; FLOPs stay Θ(N²d) and actually rise slightly, because the backward pass recomputes scores",
+      "Attention at these shapes is memory-bound, so trading extra FLOPs for far fewer HBM round-trips is a straight win",
+      "The mechanism is the online softmax: a running max for stability plus a running normaliser, with the accumulated output rescaled as each K/V block is consumed",
+      "The backward pass also avoids the N×N matrix by recomputing it from saved softmax statistics — which is why the saving holds during training, not just inference — and FA2's gain came mostly from re-partitioning work across warps, not from the tiling idea itself"
+    ],
+    "tags": [
+      "flash-attention",
+      "kernels",
+      "io-aware"
+    ],
+    "source_link": "https://arxiv.org/abs/2205.14135"
+  },
+  {
+    "id": "architectures-aux-load-balancing-005",
+    "type": "formula",
+    "stage": "S12",
+    "category": "architectures",
+    "topic": "Aux Load Balancing",
+    "difficulty": "hard",
+    "formula": "\\mathcal{L}_{\\text{aux}} = \\alpha \\cdot n \\cdot \\sum_{i=1}^{n} f_i \\, p_i",
+    "concept": "f_i is the fraction of tokens in the batch actually routed to expert i; p_i is the mean router probability assigned to expert i. The sum is scaled by n so its minimum is exactly 1 under uniform routing. f_i is not differentiable — it comes from a discrete top-k — so gradient flows only through p_i, nudging the router away from experts already taking too much traffic. Without this term routing collapses onto a handful of experts and the rest never train.",
+    "example": "Switch Transformer with n=64 experts, top-1 routing, α=0.01. Uniform routing gives f_i = p_i = 1/64, so L_aux = 0.01·64·64·(1/64)² = 0.01, the floor. If one expert captures 50% of tokens its term alone contributes 64·0.5·0.5 = 16, taking L_aux to 0.163 — 16× the floor. α=0.01 is chosen small enough not to distort a language-modelling loss of 2 to 4 nats, yet large enough to move the router logits.",
+    "interview_question": "Your MoE trains stably but two of 64 experts absorb 40% of tokens, and eval is worse than a dense model with the same active parameter count. Diagnose it, and say what the auxiliary loss can and cannot fix.",
+    "answer_points": [
+      "L_aux bottoms out at α under the n scaling, so plot the actual f_i histogram against the 1/n floor before changing anything",
+      "The gradient reaches p_i only, since f_i comes from a non-differentiable top-k — the loss shapes router probabilities, it never moves assignments directly",
+      "α too small leaves the collapse in place; too large and the router balances by sending tokens to experts that are wrong for them, which is exactly the eval regression you are seeing",
+      "Capacity factor is the other half of the story: tokens over an expert's capacity are dropped and pass through the residual unchanged, so a healthy f_i histogram can still hide heavy dropping",
+      "DeepSeek-V3 removes the aux loss entirely in favour of a per-expert routing bias adjusted online, precisely because the aux gradient fights the language-modelling objective"
+    ],
+    "tags": [
+      "moe",
+      "routing",
+      "load-balancing"
+    ],
+    "source_link": "https://arxiv.org/abs/2101.03961"
+  },
+  {
+    "id": "nn-foundations-gradient-008",
+    "type": "formula",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Gradient",
+    "difficulty": "mid",
+    "formula": "\\frac{\\partial s_i}{\\partial x_j} = s_i\\,(\\delta_{ij} - s_j), \\qquad J = \\mathrm{diag}(s) - s\\,s^{\\top}",
+    "concept": "The softmax Jacobian is a dense n×n matrix, because the normaliser couples every output to every input. Diagonal entries are s_i(1−s_i), off-diagonal entries −s_i s_j. Two consequences follow: the Jacobian is singular, since outputs are constrained to sum to 1 so every row sums to zero; and it collapses toward zero as s approaches one-hot, which is exactly the saturation that kills gradients in unscaled attention logits.",
+    "example": "For s = [0.7, 0.2, 0.1]: ∂s₁/∂x₁ = 0.7·0.3 = 0.21 and ∂s₁/∂x₂ = −0.7·0.2 = −0.14. Now take s = [0.99, 0.005, 0.005]: the same diagonal entry collapses to 0.99·0.01 = 0.0099, 21× smaller. Composed with cross-entropy the algebra telescopes to dL/dx = s − y, so a confidently wrong prediction still returns a gradient of magnitude near 1 — the saturation cancels exactly.",
+    "interview_question": "Derive dL/dx for a softmax followed by cross-entropy, then explain why frameworks fuse the two into a single op instead of composing their backward passes.",
+    "answer_points": [
+      "∂s_i/∂x_j = s_i(δ_ij − s_j), giving J = diag(s) − ssᵀ, dense because the normaliser couples all outputs",
+      "With L = −Σ y_i log s_i the Jacobian-vector product telescopes to dL/dx = s − y — an O(n) vector rather than an O(n²) matrix",
+      "Fusing avoids ever forming that Jacobian: at a 50257-token vocabulary it would be 2.5 billion entries per token",
+      "Fusion is also a numerical fix — log-sum-exp with the max subtracted keeps log s finite, whereas taking softmax then its log underflows to −∞ on confidently wrong tokens, which is precisely when the gradient matters most"
+    ],
+    "tags": [
+      "softmax",
+      "backprop",
+      "cross-entropy"
+    ],
+    "source_link": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+    "id": "classical-ml-decomposition-018",
+    "type": "formula",
+    "stage": "S14",
+    "category": "classical-ml",
+    "topic": "Decomposition",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\mathbb{E}\\big[(y - \\hat{f}(x))^{2}\\big] = \\underbrace{\\big(\\mathbb{E}[\\hat{f}(x)] - f(x)\\big)^{2}}_{\\text{Bias}^{2}} \\\\[3pt] +\\ \\underbrace{\\mathbb{E}\\big[(\\hat{f}(x) - \\mathbb{E}[\\hat{f}(x)])^{2}\\big]}_{\\text{Variance}}\\ +\\ \\underbrace{\\sigma^{2}}_{\\text{irreducible}} \\end{gathered}",
+    "concept": "The expectation is taken over training sets, not over test points — that is the part people get wrong. Bias is how far the average model across resampled training sets sits from the truth; variance is how much the fitted model moves as that training set is resampled; σ² is label noise no model can beat. The identity is exact for squared error only, which is why bias-variance is a mental model in classification rather than a theorem.",
+    "example": "Fit degree-1 to degree-15 polynomials to 20 points drawn from a degree-3 truth with σ=0.5, so σ²=0.25. Degree 1: train MSE 2.0, test MSE 2.1 — a small gap, both bad, bias-dominated. Degree 15: train MSE 0.02 while test MSE climbs to 4.8, almost entirely variance. Degree 3 lands near test MSE 0.27, just above the 0.25 floor. That floor is the signal to stop: no capacity and no extra data drives MSE below 0.25 here.",
+    "interview_question": "A model shows 2% training error and 12% validation error, and your junior wants to add capacity. Decompose the 10-point gap, say what you would do first, and state the number that tells you the ceiling.",
+    "answer_points": [
+      "A large train-validation gap is the signature of variance, and added capacity raises variance — it makes this worse, not better",
+      "First moves are the ones that cut variance without raising bias: more data, stronger regularisation, bagging, early stopping",
+      "Estimate the irreducible error from the label-noise rate or human agreement on the same examples, because that is the floor and it bounds what any fix can buy",
+      "The exact three-term split holds for squared error only; under 0-1 loss the analogue is not additive, and in the overparameterised regime test error can descend a second time past the interpolation threshold — so the classic U-curve is not a safe guide for a large network"
+    ],
+    "tags": [
+      "bias-variance",
+      "generalization",
+      "model-selection"
+    ],
+    "source_link": "https://arxiv.org/abs/1812.11118"
+  },
+  {
+    "id": "classical-ml-sample-size-019",
+    "type": "formula",
+    "stage": "S14",
+    "category": "classical-ml",
+    "topic": "Sample size",
+    "difficulty": "mid",
+    "formula": "n = \\frac{2\\,\\sigma^{2}\\,\\big(z_{1-\\alpha/2} + z_{1-\\beta}\\big)^{2}}{\\Delta^{2}}",
+    "concept": "n is per arm. Δ is the minimum detectable effect you commit to before running, σ² the per-unit variance of the metric, and the two z terms encode the false-positive rate α and the power 1−β. The leading 2 appears because you are estimating a difference between two independent means. The shape that matters: n scales with 1/Δ², so halving the effect you want to catch quadruples the sample you need.",
+    "example": "Two-sided α=0.05 gives z=1.96 and 80% power gives z=0.84, so (1.96+0.84)² = 7.85. For a conversion metric at p=0.10, σ² = p(1−p) = 0.09. Detecting a relative 5% lift means Δ=0.005, so n = 2·0.09·7.85/0.005² = 56,500 per arm. Chase a 2% lift instead and Δ=0.002 gives 353,000 per arm — 6.25× the traffic for an effect only 2.5× smaller.",
+    "interview_question": "Product wants to ship after an experiment that ran 3 days and showed a 4% lift at p=0.06. Compute what it would have taken to call that reliably, and list what you would check before saying no.",
+    "answer_points": [
+      "n scales as σ²/Δ² times (z_{1−α/2} + z_{1−β})² = 7.85 at α=0.05 and 80% power — plug in the observed baseline variance and compare against what they actually collected",
+      "An underpowered test landing near significance is the winner's curse: conditional on crossing the threshold, the observed effect overstates the true one",
+      "Check for peeking — repeatedly evaluating inflates the false-positive rate well beyond 5%, and the fix is sequential testing or always-valid confidence intervals, not a stricter p",
+      "Three days misses the weekly cycle, and randomising by user while measuring per session breaks the independence assumption, so σ² is underestimated and the whole calculation is optimistic; use CUPED to cut σ² with pre-experiment covariates rather than only running longer"
+    ],
+    "tags": [
+      "ab-testing",
+      "statistics",
+      "power"
+    ],
+    "source_link": "https://exp-platform.com/Documents/2013-02-CUPED-ImprovingSensitivityOfControlledExperiments.pdf"
+  }
+]
