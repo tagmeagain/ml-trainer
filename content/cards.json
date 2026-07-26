@@ -679,5 +679,507 @@
       "power"
     ],
     "source_link": "https://exp-platform.com/Documents/2013-02-CUPED-ImprovingSensitivityOfControlledExperiments.pdf"
+  },
+  {
+    "id": "math-prereq-linear-algebra-refresh-001",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Linear algebra refresh",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} C = AB: \\quad 2mnk \\ \\text{FLOPs} \\\\[3pt] 2(mk + kn + mn)\\ \\text{bytes in fp16} \\end{gathered}",
+    "concept": "Almost everything in a transformer is a matmul plus an elementwise op, so the shape of the matmul decides the hardware efficiency. For A [m×k] times B [k×n] the cost is 2mnk FLOPs against roughly 2(mk+kn+mn) bytes in fp16, giving an arithmetic intensity near mnk/(mk+kn+mn). Large square matmuls sit far above a GPU's ridge point and run near peak; thin ones sit far below it and stall on memory. Same algebra, wildly different throughput.",
+    "example": "A 4096×4096 by 4096×4096 fp16 matmul: 2·4096³ = 137 GFLOPs moving 3·4096²·2 = 100 MB, an intensity of about 1370 FLOP/byte — far above an A100's ridge of 153, so it is compute-bound and runs near peak. Now the same weight against a single vector: 2·4096² = 34 MFLOPs against 33 MB, intensity 1.0, memory-bound at roughly 1/150 of peak. That precise gap is prefill versus decode.",
+    "interview_question": "You replace one batched matmul with a loop of matrix-vector products. The FLOP count is identical but it runs about 100× slower. Explain why, with numbers.",
+    "answer_points": [
+      "FLOPs are equal but bytes moved are not — batching amortises reading the weight matrix across every vector in the batch",
+      "Intensity for m×k by k×n is ≈ mnk/(mk+kn+mn); at n=1 that collapses to about 1 FLOP/byte",
+      "Compare to the ridge point (A100: 312 TFLOP/s ÷ 2039 GB/s = 153) — below it no kernel, however good, reaches peak",
+      "This is exactly why decode batches requests: the weights are read once per step regardless of how many sequences share that read"
+    ],
+    "tags": [
+      "linear-algebra",
+      "matmul",
+      "roofline"
+    ]
+  },
+  {
+    "id": "math-prereq-probability-mle-002",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Probability + MLE",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\hat{\\theta}_{\\text{MLE}} = \\arg\\max_{\\theta} \\prod_i p(x_i \\mid \\theta) \\\\[3pt] = \\arg\\min_{\\theta} \\ -\\sum_i \\log p(x_i \\mid \\theta) \\end{gathered}",
+    "concept": "MLE picks the parameters that make the observed data most likely. Taking a log turns the product into a sum and negating gives the loss you actually minimise — which is why cross-entropy is not merely analogous to maximum likelihood but identical to it under a categorical model. MAP adds a prior, and a zero-mean Gaussian prior on the weights is exactly L2 regularisation. The Gaussian MLE for σ² divides by n and is biased low, because the same data already supplied the estimate of μ.",
+    "example": "Fit a Gaussian to n=5 samples [2,4,4,4,5]. MLE gives μ̂ = 3.8 and σ̂² = (1/5)·4.80 = 0.96, while the unbiased estimator divides by n−1 = 4 for 1.20 — 25% larger. The bias is exactly σ²/n, so it vanishes at scale and bites at n=5. The same MLE logic on tokens gives NLL = −(1/N)Σ log p(x_i), which is cross-entropy: a uniform guess over 50257 tokens costs ln 50257 = 10.82 nats.",
+    "interview_question": "A colleague claims cross-entropy loss and maximum likelihood are different things, and that weight decay is just a training trick with no principled basis. Correct both claims.",
+    "answer_points": [
+      "Maximising Π p(x_i|θ) is the same problem as minimising −Σ log p(x_i|θ); dividing by N makes it cross-entropy exactly",
+      "MAP maximises p(θ|D) ∝ p(D|θ)·p(θ), and a zero-mean Gaussian prior contributes −λ‖θ‖² to the log posterior — that is L2, derived rather than invented",
+      "So weight decay has a precise Bayesian reading as a Gaussian prior over weights",
+      "AdamW deliberately breaks that equivalence: decoupling decay from the adaptive step means it is no longer exactly Gaussian MAP, but it works better because Adam's per-parameter scaling otherwise distorts the penalty unevenly across parameters"
+    ],
+    "tags": [
+      "mle",
+      "map",
+      "cross-entropy",
+      "weight-decay"
+    ]
+  },
+  {
+    "id": "math-prereq-calculus-chain-rule-003",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Calculus / chain rule",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} \\frac{\\partial L}{\\partial W} = \\frac{\\partial L}{\\partial r} \\cdot \\frac{\\partial r}{\\partial W} \\\\[3pt] L = \\|Wx - y\\|^2 \\ \\Rightarrow\\ \\frac{\\partial L}{\\partial W} = 2\\,r\\,x^{\\top} \\end{gathered}",
+    "concept": "Backprop is the multivariate chain rule evaluated right to left. Reverse mode accumulates a vector-Jacobian product at each step and never materialises the Jacobian itself. Direction is the whole trick: forward mode costs one pass per input, reverse mode one pass per output, and with a single scalar loss and billions of parameters, reverse wins by that same enormous factor. Shapes are the practical sanity check — dL/dW always has the shape of W, which catches most sign and transpose errors immediately.",
+    "example": "L = ‖Wx − y‖² with W [m×n]. Let r = Wx − y, so L = rᵀr, dL/dr = 2r, and dL/dW = 2r xᵀ — an outer product of shape [m×n], matching W. Concretely W = [[1,2],[3,4]], x = [1,1], y = [2,5]: Wx = [3,7], r = [1,2], and dL/dW = 2·[1,2]ᵀ[1,1] = [[2,2],[4,4]]. If your derivation produces an [n×m], you have transposed something.",
+    "interview_question": "A junior asks why backprop is called reverse-mode and whether forward-mode autodiff would work just as well. Answer with the cost argument, then say when forward mode genuinely is the right choice.",
+    "answer_points": [
+      "Reverse mode computes vᵀJ at one pass per output; forward mode computes Jv at one pass per input",
+      "Training has one scalar loss against ~10⁹ parameters, so reverse is cheaper by that ratio — the asymmetry is the entire justification",
+      "The price is memory: reverse must retain forward activations until the backward pass consumes them, which is exactly what activation checkpointing trades back for recompute",
+      "Forward mode wins when outputs vastly outnumber inputs — a handful of hyperparameters, or directional derivatives where you want Jv for one specific v"
+    ],
+    "tags": [
+      "chain-rule",
+      "autodiff",
+      "backprop"
+    ]
+  },
+  {
+    "id": "math-prereq-logistic-regression-004",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Logistic Regression",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} p(y=1 \\mid x) = \\sigma(w^{\\top}x + b) \\\\[3pt] \\frac{\\partial L}{\\partial w} = (\\sigma(z) - y)\\,x \\end{gathered}",
+    "concept": "Logistic regression models the log-odds as linear in x and is fit by maximising the Bernoulli likelihood, which is precisely binary cross-entropy. The gradient is remarkably clean — prediction minus target, times the input — the same form that reappears in softmax with cross-entropy. The objective is convex, so there is one global optimum. L2 is what keeps the fit finite when classes are perfectly separable: without it ‖w‖ diverges as the model pushes σ toward exactly 0 and 1.",
+    "example": "One feature, w=0.5, b=0, x=2, y=1. Then z=1.0, σ(1)=0.731, loss = −ln 0.731 = 0.313, and the gradient is (0.731−1)·2 = −0.538. One SGD step at lr=0.1 gives w=0.554, z=1.108, σ=0.752, loss 0.285. On perfectly separable data with no L2, repeating this drives w→∞ and loss→0 while accuracy stops improving after the first correct split.",
+    "interview_question": "Your logistic regression hits 100% training accuracy, the weights keep growing every epoch, and validation AUC slowly drifts down. Explain the mechanism and give the one-line fix.",
+    "answer_points": [
+      "Perfect separability means the likelihood is only maximised in the limit ‖w‖→∞, so gradient descent never converges and keeps inflating the margin",
+      "Adding L2 makes the objective strictly convex with a finite optimum — that is the one-line fix",
+      "The gradient (σ(z)−y)x shrinks as σ saturates, so the process slows but never halts on its own",
+      "Growing ‖w‖ also destroys calibration: probabilities collapse toward 0 and 1, so if you need usable scores you want Platt scaling or isotonic regression on a held-out split, not merely early stopping"
+    ],
+    "tags": [
+      "logistic-regression",
+      "calibration",
+      "regularization"
+    ],
+    "source_link": "https://arxiv.org/abs/1706.04599"
+  },
+  {
+    "id": "math-prereq-bias-variance-regularization-005",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Bias-variance + regularization",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\text{ridge:}\\ \\ \\hat{w} = \\frac{w_{\\text{OLS}}}{1 + \\lambda} \\\\[3pt] \\text{lasso:}\\ \\ \\hat{w} = \\mathrm{sign}(w)\\max(|w| - \\lambda,\\ 0) \\end{gathered}",
+    "concept": "L1 and L2 differ in the geometry of their constraint region. The L2 ball is round, so a loss contour almost never touches it on an axis and coefficients shrink smoothly toward but never onto zero. The L1 ball has corners on the axes, and corners are exactly where a generic contour makes first contact — so solutions land on axes and coefficients become exactly zero. Equivalently: L1's subgradient is a constant ±λ that does not vanish near zero, while L2's is 2λw and does.",
+    "example": "Ridge on one feature shrinks proportionally: ŵ = w/(1+λ), so 0.8 becomes 0.4 at λ=1 and 0.08 at λ=9 — small, never zero. Lasso soft-thresholds instead: at λ=0.5, 0.8 becomes 0.3 and anything under 0.5 becomes exactly 0. On a 1000-feature problem with 20 real signals, that is the difference between 980 exact zeros and 980 small non-zeros you still have to threshold by hand.",
+    "interview_question": "You have 1000 features, 200 samples, and you need to know which features actually matter. Compare L1 and L2 for that goal, then describe how you would validate the choice without fooling yourself.",
+    "answer_points": [
+      "L1's constraint region has corners on the axes so the optimum lands there, producing exact zeros; L2's is smooth and gives shrinkage without selection",
+      "Subgradient view: L1's penalty gradient is ±λ regardless of magnitude, L2's is 2λw and vanishes as w→0",
+      "With p ≫ n, L1 selects at most n features and picks arbitrarily among correlated ones — reach for elastic net when that grouping matters",
+      "Selecting features and tuning λ on the same split leaks badly: use nested CV with selection inside the inner loop, or your reported error is optimistic by a wide and unknowable margin"
+    ],
+    "tags": [
+      "regularization",
+      "l1-l2",
+      "cross-validation"
+    ]
+  },
+  {
+    "id": "math-prereq-backprop-for-2-layer-net-numpy-006",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "Backprop for 2-layer net (numpy)",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} do = p - y, \\qquad dW_2 = h^{\\top}do, \\qquad dh = do\\,W_2^{\\top} \\\\[3pt] dz_1 = dh \\odot \\mathbb{1}[z_1 > 0], \\qquad dW_1 = x^{\\top}dz_1 \\end{gathered}",
+    "concept": "Forward is function composition; backward applies the chain rule in reverse while reusing every stored intermediate. For h = ReLU(xW₁+b₁) and o = hW₂+b₂ under softmax cross-entropy, the whole backward pass is five lines. ReLU's derivative is just a mask, which is why it is cheap — and also why dead units never recover: a unit whose pre-activation is negative on every example receives exactly zero gradient, permanently.",
+    "example": "Batch 32, input 2, hidden 8, output 2 on XOR. W₁ is 2×8 = 16 params, W₂ is 8×2 = 16, plus 10 biases: 42 weights total. The forward stores x [32×2], z₁ [32×8] and p [32×2] — 384 floats of activations against those 42 weights. Even at this toy scale activations dominate memory by 9×, which is the same ratio that forces activation checkpointing on real models. Gradient-check with (L(w+1e-5)−L(w−1e-5))/2e-5 and expect ~1e-7 relative agreement.",
+    "interview_question": "Your numpy 2-layer net trains on XOR but the loss plateaus at 0.69 and half the hidden units output zero for every input. Diagnose it and give two fixes.",
+    "answer_points": [
+      "0.69 is ln 2 — the model is outputting 50/50 and has learned nothing at all",
+      "Dead ReLUs: the mask 1[z>0] is zero for those units on every example, so their columns of dW₁ are identically zero and cannot recover",
+      "Usual causes are too large a learning rate driving a large negative bias update, or poor init; fixes are lower LR, He initialisation, or LeakyReLU/GELU which keep a non-zero slope for negatives",
+      "Run a gradient check before blaming optimisation — a sign or transpose error in dz₁ = dh ⊙ mask produces this exact symptom, and no amount of LR tuning will fix it"
+    ],
+    "tags": [
+      "backprop",
+      "relu",
+      "debugging"
+    ]
+  },
+  {
+    "id": "math-prereq-svd-pca-dimensionality-reduction-007",
+    "type": "concept",
+    "stage": "S0",
+    "category": "math-prereq",
+    "topic": "SVD & PCA (dimensionality reduction)",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} A = U\\Sigma V^{\\top} \\\\[3pt] \\|A - A_r\\|_F \\ \\text{minimised by the top } r\\ \\sigma_i \\quad \\text{(Eckart–Young)} \\end{gathered}",
+    "concept": "SVD factors any matrix into UΣVᵀ, where the singular values are square roots of the eigenvalues of AᵀA. Truncating to the top r gives the provably best rank-r approximation in both Frobenius and spectral norm. PCA is just SVD of the centred data matrix: principal directions are the right singular vectors and explained variance is σᵢ²/Σσⱼ². The same idea underlies LoRA — asserting that a fine-tuning update is well approximated at small rank is asserting its spectrum decays fast.",
+    "example": "A 4096×4096 weight matrix holds 16.8M parameters. A rank-16 truncation stores U [4096×16] and ΣVᵀ [16×4096] — 131k parameters, a 128× reduction, which is exactly LoRA's arithmetic at r=16. Whether that is lossless depends entirely on the spectrum: if the top 16 singular values carry 95% of Σσ² it is nearly free, but for a pretrained weight matrix they typically carry far less.",
+    "interview_question": "Someone proposes shrinking your model by replacing every weight matrix with its rank-16 SVD truncation, citing LoRA as the precedent. Evaluate the proposal.",
+    "answer_points": [
+      "Eckart–Young says truncation is optimal for a given rank, so the method is sound — the real question is whether the spectrum justifies r=16",
+      "Pretrained weight matrices are typically near full rank with slowly decaying spectra, so rank-16 discards a great deal",
+      "LoRA's claim is that ΔW, the update, is low-rank — not that W itself is; conflating the two is the actual error here",
+      "Even where accuracy survives, a rank-r factorisation replaces one GEMM with two smaller ones, which is usually slower on tensor cores at these shapes, so a memory win can cost latency"
+    ],
+    "tags": [
+      "svd",
+      "pca",
+      "low-rank",
+      "lora"
+    ],
+    "source_link": "https://arxiv.org/abs/2106.09685"
+  },
+  {
+    "id": "nn-foundations-activation-functions-relu-gelu-silu-001",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Activation functions (ReLU, GELU, SiLU)",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} \\mathrm{ReLU}(x) = \\max(0, x) \\\\[3pt] \\mathrm{GELU}(x) = x\\,\\Phi(x), \\qquad \\mathrm{SiLU}(x) = x\\,\\sigma(x) \\end{gathered}",
+    "concept": "ReLU is cheap, non-saturating above zero, and its derivative is a mask — but a unit whose pre-activation is always negative gets zero gradient forever. GELU multiplies the input by the probability a standard normal falls below it, so small negatives pass through attenuated instead of being clipped. SiLU is nearly the same curve using a sigmoid gate and is cheaper to evaluate. Both are non-monotonic near zero, which is what lets them act as soft gates rather than hard switches.",
+    "example": "At x = [−2,−1,0,1,2]: ReLU gives [0,0,0,1,2]. GELU gives [−0.045,−0.159,0,0.841,1.955]. SiLU gives [−0.238,−0.269,0,0.731,1.762]. Both retain a small negative response near x=−1 where ReLU is flat zero, and both recover to nearly identity by x=2. SiLU's minimum is about −0.278 at x≈−1.28 — that dip is the non-monotonicity, and it is what SwiGLU wraps in a gated linear unit.",
+    "interview_question": "A teammate swaps GELU for ReLU in a transformer FFN to save compute. The model still trains but final loss is slightly worse. Explain what was actually lost and whether the trade makes sense.",
+    "answer_points": [
+      "ReLU zeroes all negatives and discards that sign information; GELU and SiLU pass small negatives attenuated, giving a smoother loss surface and live gradients there",
+      "GELU has a stochastic-regulariser reading: x·Φ(x) is the expected value of x under a Bernoulli gate firing with probability Φ(x)",
+      "The compute saving is negligible — FFN cost is the two GEMMs, not the elementwise nonlinearity, which is memory-bound and normally fused into a neighbouring kernel",
+      "So the trade fails for the very reason it looked attractive: the activation was never on the critical path, and ReLU's induced sparsity only pays off with kernels that actually exploit it"
+    ],
+    "tags": [
+      "activations",
+      "gelu",
+      "silu"
+    ],
+    "source_link": "https://arxiv.org/abs/1606.08415"
+  },
+  {
+    "id": "nn-foundations-stable-softmax-gradient-002",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Stable softmax + gradient",
+    "difficulty": "mid",
+    "formula": "\\mathrm{softmax}(x)_i = \\frac{e^{x_i - \\max(x)}}{\\sum_j e^{x_j - \\max(x)}}",
+    "concept": "The naive form overflows as soon as any logit exceeds about 88 in float32, because e^x passes the largest representable value. Subtracting max(x) before exponentiating changes nothing mathematically — the constant cancels between numerator and denominator — while guaranteeing the largest exponent is e⁰ = 1 and the rest underflow harmlessly toward zero. Log-softmax goes one step further, computing x − logsumexp(x) directly so the logarithm is never applied to an underflowed zero.",
+    "example": "x = [1000, 1001, 1002] in float32: naive exp gives [inf, inf, inf], then inf/inf = NaN and the batch is lost. Subtracting the max gives [−2,−1,0] → exp [0.135, 0.368, 1.0], sum 1.503, softmax [0.090, 0.245, 0.665] — correct. Separately, log(softmax(x)) on a confidently wrong token underflows to log(0) = −inf, whereas logsumexp keeps it finite at about −2.41.",
+    "interview_question": "Training loss goes to NaN at step 3000, always in the same layer, and only in fp16. Walk through how you would isolate it and name the two most likely causes.",
+    "answer_points": [
+      "fp16 maxes out at 65504 and exp overflows above an exponent of roughly 11, so unnormalised logits are the first suspect — log max|logit| per layer per step",
+      "Softmax without max-subtraction, or with the subtraction itself done in fp16, gives inf/inf = NaN",
+      "The other classic is a normaliser underflowing to zero and then being divided by — check that ε sits inside the sqrt, not outside",
+      "Also check the attention mask: −1e9 instead of −inf overflows fp16 to −inf, and a fully masked row then produces NaN even though the softmax code is correct"
+    ],
+    "tags": [
+      "softmax",
+      "numerical-stability",
+      "fp16"
+    ]
+  },
+  {
+    "id": "nn-foundations-cross-entropy-loss-gradient-003",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Cross-Entropy loss + gradient",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} L = -\\sum_i y_i \\log p_i = -\\log p_{\\text{correct}} \\\\[3pt] \\frac{\\partial L}{\\partial \\text{logits}} = p - y \\end{gathered}",
+    "concept": "Against a one-hot target, cross-entropy collapses to minus the log probability of the correct class, because every other term is multiplied by zero. That is why the loss only ever sees the probability assigned to the right token. Fused with softmax, the gradient on the logits is simply p − y: a confident correct prediction contributes almost nothing, a confident wrong one contributes magnitude near 1. That self-balancing property is why the two are never implemented as separate ops.",
+    "example": "Three classes, logits [2.0, 1.0, 0.1], target class 0. Softmax gives [0.659, 0.242, 0.099], loss = −ln 0.659 = 0.417, and the gradient on logits is [−0.341, 0.242, 0.099], summing to zero as it must. Apply label smoothing at 0.1 and the target becomes [0.933, 0.033, 0.033], so the gradient never fully vanishes and the model is actively discouraged from driving p to exactly 1.",
+    "interview_question": "Your classifier reaches 99% training accuracy but its predicted probabilities are useless for downstream thresholding. Explain what cross-entropy did and did not optimise, and what you would change.",
+    "answer_points": [
+      "CE is a proper scoring rule so it does reward calibration, but nothing stops it pushing p→1 once the data is separable, which produces systematic overconfidence",
+      "The gradient p − y shrinks as p→1, so confident-correct examples stop contributing and only residual errors keep driving training",
+      "Label smoothing caps achievable confidence and keeps a gradient alive; temperature scaling on a held-out set fixes calibration afterwards with a single parameter and no retraining",
+      "Decide first whether you need calibration or ranking — smoothing improves ECE but can hurt AUC, and it degrades the model as a distillation teacher because it deliberately flattens the dark-knowledge structure in the tail"
+    ],
+    "tags": [
+      "cross-entropy",
+      "calibration",
+      "label-smoothing"
+    ],
+    "source_link": "https://arxiv.org/abs/1512.00567"
+  },
+  {
+    "id": "nn-foundations-optimizers-sgd-adam-adamw-004",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Optimizers: SGD → Adam → AdamW",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} m_t = \\beta_1 m_{t-1} + (1-\\beta_1)g_t, \\qquad v_t = \\beta_2 v_{t-1} + (1-\\beta_2)g_t^{2} \\\\[3pt] \\theta_t = \\theta_{t-1} - \\eta\\left(\\frac{\\hat{m}_t}{\\sqrt{\\hat{v}_t} + \\epsilon} + \\lambda\\,\\theta_{t-1}\\right) \\end{gathered}",
+    "concept": "Adam keeps per-parameter first and second moment estimates and divides each step by √v, so every parameter gets a step scaled to its own gradient history. Bias correction matters because m and v start at zero and would otherwise be biased toward zero for hundreds of steps. AdamW's change is small and consequential: L2 added to the loss flows through the gradient and gets divided by √v like everything else, so parameters with large gradients receive less decay. Decoupling applies λθ straight to the weight instead.",
+    "example": "β₁=0.9, β₂=0.999, first step with g=0.1: m₁=0.01 and v₁=1e-5. Uncorrected the step would be 0.01/√1e-5 = 3.16 — 30× too large. Corrected, m̂=0.1 and v̂=1e-2, giving 0.1/0.1 = 1.0, the intended unit step. Memory: m and v are 4 bytes each per parameter, so a 7B model pays 56 GB for optimiser state alone, before weights and gradients.",
+    "interview_question": "You switch Adam to AdamW at identical learning rate and weight decay, change nothing else, and the model generalises noticeably better. Explain precisely what changed in the update rule.",
+    "answer_points": [
+      "In Adam, L2 enters through the gradient and is divided by √v̂ with everything else, so parameters with large historical gradients are systematically decayed less",
+      "AdamW applies λθ directly to the weight, outside the adaptive scaling, making decay uniform across parameters",
+      "It also decouples the hyperparameters: in Adam the effective decay scales with the learning rate, so tuning one silently retunes the other",
+      "A consequence worth knowing: Adam's L2 is no longer a Gaussian prior in the MAP sense, and the practical tell is that the best λ under AdamW is often 10–100× the value that worked under Adam"
+    ],
+    "tags": [
+      "adam",
+      "adamw",
+      "weight-decay",
+      "optimizers"
+    ],
+    "source_link": "https://arxiv.org/abs/1711.05101"
+  },
+  {
+    "id": "nn-foundations-cosine-lr-warmup-schedule-005",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Cosine LR + warmup schedule",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} \\eta_t = \\eta_{\\min} + \\tfrac{1}{2}\\left(\\eta_{\\max} - \\eta_{\\min}\\right)\\left(1 + \\cos\\frac{\\pi\\,(t - T_w)}{T - T_w}\\right) \\\\[3pt] \\text{for } t \\geq T_w \\end{gathered}",
+    "concept": "Warmup exists because Adam's second-moment estimate is unreliable in the first few hundred steps: v is built from very few samples, so 1/√v̂ can be enormous and a full-size step can move weights somewhere unrecoverable. Ramping the learning rate limits the damage while v stabilises. Cosine decay then holds a moderate rate for most of the budget and anneals smoothly to near zero, which beats step decay empirically — the model needs a long low-rate tail to settle.",
+    "example": "For a 1000-step run with warmup=100, max_lr=3e-4, min_lr=3e-5: the rate rises linearly from 0 to 3e-4 over the first 100 steps, passes 1.65e-4 at step 550 (halfway through the decay, where cos = 0), and lands on 3e-5 at step 1000. The classic bug is mismatching T with the real step count — set T=1000 and train 2000 steps and the cosine argument passes π, so the learning rate climbs back up.",
+    "interview_question": "You drop warmup to save 100 steps. The run diverges within 50 steps under Adam, but the identical config trains fine under plain SGD. Explain the difference.",
+    "answer_points": [
+      "Adam divides by √v̂, and at step 1 that is estimated from a single gradient, so the denominator is close to meaningless and the effective step is uncontrolled",
+      "SGD has no adaptive denominator — its first step is just lr·g, which is bounded and safe",
+      "Warmup keeps steps small while v accumulates enough samples to be a usable variance estimate",
+      "The alternative is fixing the estimator rather than the schedule: RAdam rectifies the variance term, and raising β₂ or ε achieves part of the same effect — warmup is the crude but dependable option"
+    ],
+    "tags": [
+      "learning-rate",
+      "warmup",
+      "schedules"
+    ]
+  },
+  {
+    "id": "nn-foundations-gradient-flow-through-residuals-006",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Gradient flow through residuals",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} x_L = x_l + \\sum_{i=l}^{L-1} F(x_i) \\\\[3pt] \\frac{\\partial x_L}{\\partial x_l} = 1 + \\frac{\\partial}{\\partial x_l}\\sum_{i=l}^{L-1} F(x_i) \\end{gathered}",
+    "concept": "A residual connection makes a layer compute x + F(x) instead of F(x), so the Jacobian between any two depths carries an explicit identity term. Gradients then reach early layers along a path that is never multiplied down, however small the learned Jacobians are. Without it the gradient at layer l is a product of L−l Jacobians, and if their typical singular value is even slightly under 1 that product vanishes exponentially with depth. The residual converts a product into a sum.",
+    "example": "Take 48 layers whose Jacobians each have typical singular value 0.9. Without residuals the gradient reaching layer 1 is scaled by 0.9⁴⁸ = 0.0064, a 156× attenuation; at 0.8 it is 0.8⁴⁸ = 2.2×10⁻⁵ and those layers effectively stop learning. With residuals the same path carries a 1 plus those terms, so the floor stays at 1 no matter the depth.",
+    "interview_question": "A colleague proposes stripping residual connections from a 48-layer model to save memory, arguing modern initialisation makes them unnecessary. Quantify what breaks.",
+    "answer_points": [
+      "dx_L/dx_l contains an explicit +1, so gradients reach layer 0 unattenuated; removing it makes the path a product of 48 Jacobians",
+      "At a typical singular value of 0.9 that product is 0.9⁴⁸ ≈ 0.0064, and at 0.8 it is 2×10⁻⁵ — the early layers stop training in any useful sense",
+      "The premise is also wrong on its own terms: a residual add is elementwise and can be done in place, so it costs essentially no memory",
+      "Careful depth-scaled initialisation (Fixup, T-Fixup) genuinely can train deep nets without residuals, but it is fragile and nobody ships it, precisely because the residual is free"
+    ],
+    "tags": [
+      "residuals",
+      "gradient-flow",
+      "depth"
+    ],
+    "source_link": "https://arxiv.org/abs/1512.03385"
+  },
+  {
+    "id": "nn-foundations-information-theory-perplexity-007",
+    "type": "concept",
+    "stage": "S1",
+    "category": "nn-foundations",
+    "topic": "Information theory + perplexity",
+    "difficulty": "mid",
+    "formula": "H(p,q) = H(p) + D_{\\mathrm{KL}}(p \\,\\|\\, q), \\qquad D_{\\mathrm{KL}} \\geq 0",
+    "concept": "Cross-entropy decomposes exactly into the data's own entropy plus the KL divergence from model to data. H(p) is fixed by the corpus and unbeatable, so training only ever drives KL toward zero — which is why the loss has a hard floor and why comparing raw loss across datasets means nothing. KL is asymmetric, and the direction matters: forward KL is mass-covering and is what maximum likelihood minimises, reverse KL is mode-seeking and is what appears in the RLHF objective.",
+    "example": "Take p = [0.5, 0.25, 0.125, 0.125], so H(p) = 1.75 bits. A model predicting uniform q = [0.25, 0.25, 0.25, 0.25] has H(p,q) = 2 bits, hence KL = 0.25 bits and perplexity 2² = 4 against the achievable 2^1.75 = 3.36. No model can score below 1.75 bits here, so a team reporting 1.6 has a bug or a leak — a cheap check worth running before anyone celebrates.",
+    "interview_question": "Two teams report language-model loss on different corpora, 2.1 and 2.6 nats, and the first claims the better model. What is wrong with that comparison, and what would you ask for instead?",
+    "answer_points": [
+      "Cross-entropy is H(p) + KL(p‖q), and H(p) is a property of the corpus — a lower number can simply mean an easier dataset",
+      "Only the KL term reflects model quality, and it cannot be separated without knowing H(p), so insist on a shared held-out set",
+      "Tokenisers also change the per-token normalisation, so ask for bits per byte, which is tokeniser-independent",
+      "Forward versus reverse KL is a modelling decision, not a technicality: MLE minimises forward KL and spreads mass over everything the data does, while RLHF's reverse-KL term is mode-seeking — part of why aligned models produce lower-diversity output"
+    ],
+    "tags": [
+      "entropy",
+      "kl-divergence",
+      "perplexity",
+      "evaluation"
+    ]
+  },
+  {
+    "id": "tokenization-bpe-algorithm-001",
+    "type": "concept",
+    "stage": "S2",
+    "category": "tokenization",
+    "topic": "BPE algorithm",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} \\text{merge}_t = \\arg\\max_{(a,b)}\\ \\mathrm{count}(a, b) \\\\[3pt] \\text{applied in the order learned} \\end{gathered}",
+    "concept": "BPE starts from characters and repeatedly merges the most frequent adjacent pair, recording each merge in an ordered list. Encoding replays that list in the same order, which is what makes it deterministic and exactly reversible. Vocabulary size is a direct trade: a larger vocabulary means fewer tokens per document, so shorter sequences and cheaper attention, but a bigger embedding matrix and more rarely-updated rows. There is no out-of-vocabulary case, because characters are always the fallback.",
+    "example": "On 'low lower newest widest' the early merges are the frequent adjacent pairs — e+s, then es+t, since both 'newest' and 'widest' share that ending. On real vocabularies the trade is concrete: GPT-2 uses 50257 tokens at d=768, so its embedding is 38.6M params, 31% of the 124M model. LLaMA-3 moved to 128k tokens, cutting tokens per document appreciably while making that matrix 2.5× wider.",
+    "interview_question": "Your team wants to move from a 32k to a 128k vocabulary to shorten sequences. Work through what that actually costs and what it gains.",
+    "answer_points": [
+      "Fewer tokens per document shortens S, and attention is quadratic in S, so long-context cost falls faster than linearly",
+      "Both the embedding and the output head scale with V: at d=4096, going 32k→128k adds about 96k·4096 = 393M params per matrix",
+      "The softmax over the vocabulary gets 4× wider, which is often the peak-memory operation in the training step",
+      "Rare tokens in a large vocabulary receive very few gradient updates, so their embeddings stay near initialisation — this is the origin of glitch tokens, a genuine failure mode rather than a curiosity"
+    ],
+    "tags": [
+      "bpe",
+      "tokenization",
+      "vocabulary"
+    ],
+    "source_link": "https://arxiv.org/abs/1508.07909"
+  },
+  {
+    "id": "tokenization-wordpiece-sentencepiece-unigram-lm-002",
+    "type": "concept",
+    "stage": "S2",
+    "category": "tokenization",
+    "topic": "WordPiece, SentencePiece, Unigram LM",
+    "difficulty": "easy",
+    "formula": "\\begin{gathered} \\text{BPE:}\\ \\ \\arg\\max\\ \\mathrm{count}(a,b) \\\\[3pt] \\text{WordPiece:}\\ \\ \\arg\\max\\ \\frac{\\mathrm{count}(a,b)}{\\mathrm{count}(a)\\,\\mathrm{count}(b)} \\end{gathered}",
+    "concept": "BPE merges by raw frequency. WordPiece merges the pair that most increases corpus likelihood under a unigram model, which reduces to a pointwise-mutual-information-style score — it prefers pairs that co-occur above chance rather than pairs that are merely common. Unigram LM runs the other direction: start from a large candidate vocabulary and prune the tokens whose removal costs the least likelihood. SentencePiece is not an algorithm but a wrapper that treats input as a raw stream including spaces, so it needs no pretokeniser.",
+    "example": "BERT marks continuations with '##', so 'playing' becomes ['play', '##ing'] and a token's identity depends on whether it began a word. GPT-2 instead folds the leading space into the token, making ' play' and 'play' two different ids out of its 50257. That is why a prompt ending in a trailing space measurably degrades output — you have forced the model onto the rare, unnatural branch.",
+    "interview_question": "A prompt template ends with 'Answer: ' and quality is noticeably worse than the same template without that trailing space. Explain the tokenisation cause and the fix.",
+    "answer_points": [
+      "GPT-style BPE attaches the leading space to the following token, so ' Answer' and 'Answer' are distinct ids and a lone trailing space is a rare token",
+      "Ending on that space forces continuation from a distribution the model almost never saw, since in natural text the space belongs to the next word",
+      "The fix is to strip trailing whitespace and let the model emit the space as part of its own first token",
+      "This is the same class of problem token healing solves — serving stacks that implement it re-tokenise the boundary automatically, which is why an identical prompt can behave differently across frameworks"
+    ],
+    "tags": [
+      "wordpiece",
+      "sentencepiece",
+      "unigram",
+      "token-healing"
+    ]
+  },
+  {
+    "id": "tokenization-token-embeddings-weight-tying-003",
+    "type": "concept",
+    "stage": "S2",
+    "category": "tokenization",
+    "topic": "Token embeddings + weight tying",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} E \\in \\mathbb{R}^{V \\times d} \\\\[3pt] \\text{logits} = h\\,E^{\\top}\\ \\text{(tied)} \\qquad \\text{vs} \\qquad h\\,W_{\\text{out}}\\ \\text{(untied)} \\end{gathered}",
+    "concept": "The embedding matrix maps token ids to vectors; the output head maps hidden states back to vocabulary logits. Both are V×d, so tying them halves that count and, more importantly, makes a token's input and output representations the same vector — gradients arrive from both the input side and the prediction side onto one set of rows, which helps rare tokens learn faster. Some implementations scale embeddings by √d on input so their variance matches the residual stream.",
+    "example": "GPT-2 small ties them: V=50257 and d=768 give a 38.6M-parameter shared matrix inside a 124M model, 31% of the total. Untying would add another 38.6M and push the model to 163M for no measured gain. The effect shrinks with scale — at GPT-3's d=12288 the embedding is 617M against 175B, so tying saves 0.35%, which is why large models often leave them untied.",
+    "interview_question": "You are training a 350M model on a 128k vocabulary and someone proposes untying the embeddings for extra capacity. Evaluate the proposal.",
+    "answer_points": [
+      "At V=128k the embedding dominates: with d=1024 it is 131M params, so untying adds 131M to a 350M model — a 37% increase spent entirely on vocabulary",
+      "Tying also couples input and output gradients for the same token, which matters most for rare tokens that appear seldom on either side alone",
+      "Untying is defensible at large d, where the embedding is a small fraction of the model — that is why frontier models frequently do it",
+      "At this ratio the better move is neither: shrink the vocabulary or factorise the embedding as V×k then k×d, because untying spends parameters exactly where the model is least compute-efficient"
+    ],
+    "tags": [
+      "embeddings",
+      "weight-tying",
+      "parameters"
+    ]
+  },
+  {
+    "id": "tokenization-word2vec-glove-static-embeddings-004",
+    "type": "concept",
+    "stage": "S2",
+    "category": "tokenization",
+    "topic": "Word2Vec / GloVe (static embeddings)",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\mathcal{L}_{\\text{SGNS}} = -\\log\\sigma(v_c^{\\top}v_w) - \\sum_{n \\sim P_n}\\log\\sigma(-v_c^{\\top}v_n) \\\\[3pt] P_n(w) \\propto f(w)^{0.75} \\end{gathered}",
+    "concept": "Skip-gram with negative sampling replaces the full softmax over the vocabulary with a binary decision: tell a real context pair apart from k sampled noise pairs. That turns an O(V) update into O(k). Noise is drawn proportional to frequency raised to 0.75 rather than frequency itself, which upsamples rare words relative to their true rate. Levy and Goldberg showed the objective implicitly factorises a shifted PMI matrix, which is the link to GloVe's explicit factorisation of log co-occurrence counts.",
+    "example": "At V=50257 a full softmax needs 50257 dot products per update; with k=5 negatives it needs 6 — roughly 8400× less work, which is what made billion-token training feasible in 2013. The 0.75 exponent has a concrete effect: for words at relative frequency 1e-2 and 1e-5, raw sampling would be 1000:1, but f^0.75 makes it 1000^0.75 = 178:1, so the rare word is drawn 5.6× more often in relative terms.",
+    "interview_question": "Someone proposes Word2Vec embeddings as features for a text classifier instead of a transformer encoder. When is that defensible, and what specifically do you give up?",
+    "answer_points": [
+      "You give up context — one vector per word type, so 'bank' averages the river and finance senses regardless of the sentence",
+      "SGNS implicitly factorises a shifted PMI matrix, so it captures corpus-level co-occurrence, not composition or word order",
+      "It is defensible when cost or latency dominates and the task is topical: an embedding lookup is effectively free against a full forward pass",
+      "The f^0.75 noise distribution is a real hyperparameter rather than a constant — it governs how much rare-word signal survives, and the default is often wrong for domain corpora with heavy-tailed vocabularies"
+    ],
+    "tags": [
+      "word2vec",
+      "glove",
+      "negative-sampling",
+      "embeddings"
+    ],
+    "source_link": "https://arxiv.org/abs/1310.4546"
+  },
+  {
+    "id": "attention-scaled-dot-product-attention-001",
+    "type": "concept",
+    "stage": "S3",
+    "category": "attention",
+    "topic": "Scaled Dot-Product Attention",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} Q, K, V \\in \\mathbb{R}^{B \\times H \\times S \\times d_h} \\\\[3pt] QK^{\\top} \\in \\mathbb{R}^{B \\times H \\times S \\times S} \\end{gathered}",
+    "concept": "Q, K and V are three separate projections of the same residual stream. The query says what a position is looking for, the key advertises what each position offers, and the value is what actually gets copied forward. The score matrix holds one row per query position over all key positions, so causal masking sets the strictly upper triangle to −∞ before the softmax and exactly zero after — which is what lets every position train in parallel while each still sees only its own prefix.",
+    "example": "Batch 4, 12 heads, S=1024, d_h=64. Q, K and V are each [4,12,1024,64] = 3.1M elements, while the score matrix is [4,12,1024,1024] = 50M elements, or 100 MB in fp16 — 16× larger than the tensors that produced it. At S=4096 that ratio becomes 64×. That single number is why FlashAttention exists.",
+    "interview_question": "Walk me through the tensor shapes in one attention layer at batch 4 and 1024 context, then say where the memory actually goes and why that drove FlashAttention.",
+    "answer_points": [
+      "Q, K, V are [B,H,S,d_h]; the scores are [B,H,S,S]; the output returns to [B,H,S,d_h] before W_O concatenates the heads",
+      "The score matrix is S/d_h times larger than its inputs — 16× at S=1024 with d_h=64, and 64× at S=4096",
+      "A naive implementation materialises that matrix twice, after QKᵀ and after the softmax, and that is precisely the traffic FlashAttention's tiling removes",
+      "In cross-attention Q comes from a different sequence than K and V, so the matrix is [S_q, S_kv] — assuming it is square is the bug that surfaces the first time you implement prefix caching or an encoder-decoder"
+    ],
+    "tags": [
+      "attention",
+      "shapes",
+      "causal-mask"
+    ],
+    "source_link": "https://arxiv.org/abs/1706.03762"
+  },
+  {
+    "id": "attention-multi-head-attention-002",
+    "type": "concept",
+    "stage": "S3",
+    "category": "attention",
+    "topic": "Multi-Head Attention",
+    "difficulty": "mid",
+    "formula": "\\begin{gathered} \\text{MHA}(x) = \\mathrm{Concat}(\\text{head}_1, \\ldots, \\text{head}_H)\\,W_O \\\\[3pt] \\text{head}_i = \\mathrm{Attn}(xW_Q^i,\\, xW_K^i,\\, xW_V^i) \\end{gathered}",
+    "concept": "Splitting d_model into H heads of width d_model/H costs nothing in parameters or FLOPs but changes what the layer can express. A single head computes one attention distribution, so it can only attend to one thing per position. H heads compute H independent distributions in disjoint subspaces. The output projection then mixes those subspaces back together — without W_O the heads would never interact, and concatenation alone would leave them permanently independent.",
+    "example": "GPT-2 small: d_model=768, H=12, d_h=64. Collapsing to H=1 with d_h=768 leaves the parameter count identical at 4·768² = 2.36M per layer and the FLOPs unchanged, but the layer can now form one attention pattern per position instead of twelve. Heads demonstrably specialise — previous-token heads, matching-bracket heads, syntactic heads — and a substantial fraction can be pruned at inference, though not the specialised ones.",
+    "interview_question": "Parameters and FLOPs are identical whether you use 1 head of width 768 or 12 heads of width 64. So what does head count actually buy you, and how would you pick it?",
+    "answer_points": [
+      "H independent softmax distributions rather than one, so the layer can attend to several distinct things at each position simultaneously",
+      "Each head works in a d_model/H subspace, so raising H buys diversity at the cost of per-head width",
+      "W_O is not optional — it mixes the concatenated subspaces, and without it the heads never communicate at all",
+      "Pushing d_h too low hurts: below roughly 64 the per-head rank is too small for an expressive score matrix, which is why models scale H with d_model and hold d_h fixed at 64 or 128 rather than fixing H"
+    ],
+    "tags": [
+      "mha",
+      "heads",
+      "attention"
+    ],
+    "source_link": "https://arxiv.org/abs/1905.10650"
+  },
+  {
+    "id": "attention-backprop-through-attention-003",
+    "type": "concept",
+    "stage": "S3",
+    "category": "attention",
+    "topic": "Backprop through attention",
+    "difficulty": "hard",
+    "formula": "\\begin{gathered} dV = P^{\\top}dO, \\qquad dP = dO\\,V^{\\top} \\\\[3pt] dS = P \\odot \\big(dP - \\mathrm{rowsum}(dP \\odot P)\\big) \\\\[3pt] dQ = \\frac{dS\\,K}{\\sqrt{d_k}}, \\qquad dK = \\frac{dS^{\\top}Q}{\\sqrt{d_k}} \\end{gathered}",
+    "concept": "Gradients reach Q, K and V by three different routes. The V path is linear: out = PV, so dV = PᵀdO and dP = dO Vᵀ. The Q and K paths both pass through the softmax Jacobian, diag(p) − ppᵀ per row, which collapses to dS = P ⊙ (dP − rowsum(dP ⊙ P)). Attention trains well largely because that V path never crosses a saturating nonlinearity — the only saturation risk is the softmax itself, which is exactly what the 1/√d_k scaling exists to control.",
+    "example": "The backward pass needs P, the [B,H,S,S] probability matrix. At B=4, H=12, S=1024 that is 50M elements, 100 MB in fp16 — and a naive implementation also keeps the pre-softmax scores, doubling it to 200 MB per layer, or 2.4 GB across 12 layers for attention alone. FlashAttention instead saves only the per-row max and log-sum-exp: 4·12·1024 rows × 2 floats × 4 bytes = 393 KB, a 500× reduction, and recomputes P from those.",
+    "interview_question": "Trace the gradient from the attention output back to Q, then explain why FlashAttention's backward pass is faster even though it recomputes the entire score matrix.",
+    "answer_points": [
+      "Three routes: dV = PᵀdO is linear and clean, dP = dO Vᵀ, then through the softmax dS = P ⊙ (dP − rowsum(dP ⊙ P)), and finally dQ = dS·K/√d_k",
+      "That rowsum term is the off-diagonal part of the softmax Jacobian diag(p) − ppᵀ, and dropping it is the most common error in a hand derivation",
+      "Storing P for the backward costs B·H·S² and dominates activation memory; FlashAttention keeps only the row max and log-sum-exp, two floats per row",
+      "Recomputation wins because attention is memory-bound — rebuilding P in SRAM burns FLOPs that were idle anyway, while the HBM traffic saved is the real bottleneck",
+      "Dropout sits after the softmax, so its mask must be saved or regenerated from the same seed, or the backward silently disagrees with the forward"
+    ],
+    "tags": [
+      "attention",
+      "backprop",
+      "flash-attention",
+      "activation-memory"
+    ],
+    "source_link": "https://arxiv.org/abs/2205.14135"
   }
 ]
