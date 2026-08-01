@@ -19,13 +19,19 @@ const CACHE_KEY = "cards:v1"; // last known-good content, per SPEC 3.5
 // rejects individual bad cards rather than throwing.
 
 const CATEGORIES = new Set([
+  // Tracker 1 — the core LLM path
   "math-prereq", "nn-foundations", "tokenization", "attention", "positional",
   "transformer-block", "decoder", "efficient-attention", "training-scale",
-  "peft", "alignment", "inference", "architectures", "distributed",
-  "classical-ml", "production", "safety-agents", "dsa", "system-design",
-  "behavioral",
+  "architectures", "distributed", "classical-ml", "production", "safety-agents",
+  // Fine-Tuning
+  "post-training", "ft-data", "sft", "peft", "reward-modeling", "rlhf", "dpo",
+  "alignment", "distillation", "training-systems", "eval",
+  // Inference Engineering
+  "inference", "inference-math", "gpu-arch", "kv-cache", "attention-kernels",
+  "batching", "quantization", "decoding", "distributed-inference", "serving",
+  // Tracker 2
+  "dsa", "system-design", "behavioral",
 ]);
-
 const TYPES = new Set(["concept", "formula"]);
 const DIFFICULTIES = new Set(["easy", "mid", "hard"]);
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{3}$/;
@@ -144,10 +150,18 @@ const CATEGORY_LABEL = {
   "tokenization": "tokenization", "attention": "attention",
   "positional": "positional", "transformer-block": "block",
   "decoder": "decoder", "efficient-attention": "efficient attn",
-  "training-scale": "training", "peft": "peft", "alignment": "alignment",
-  "inference": "inference", "architectures": "architectures",
+  "training-scale": "scaling", "architectures": "architectures",
   "distributed": "distributed", "classical-ml": "classical ml",
   "production": "production", "safety-agents": "safety",
+  "post-training": "post-training", "ft-data": "ft data", "sft": "sft",
+  "peft": "peft", "reward-modeling": "reward model", "rlhf": "rlhf",
+  "dpo": "dpo", "alignment": "alignment", "distillation": "distillation",
+  "training-systems": "train systems", "eval": "eval",
+  "inference": "inference", "inference-math": "inference math",
+  "gpu-arch": "gpu", "kv-cache": "kv cache",
+  "attention-kernels": "attn kernels", "batching": "batching",
+  "quantization": "quantization", "decoding": "decoding",
+  "distributed-inference": "multi-gpu", "serving": "serving",
   "dsa": "dsa", "system-design": "sys design", "behavioral": "behavioral",
 };
 

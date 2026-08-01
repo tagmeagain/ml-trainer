@@ -280,66 +280,66 @@
     "_source": "Theory: Full RLHF loop: SFT → reward model → PPO. Actor (policy) + critic (value head) + frozen ref + RM. Clipped surrogate objective. GAE for advantages. Per-token KL penalty to ref (reward = RM score − β·KL). Why PPO is unstable/expensive → motivates DPO. Value-head initialisation.\nMath: Write the clipped objective L=E[min(r_t·A_t, clip(r_t,1−ε,1+ε)·A_t)], r_t=π_θ/π_old. Write GAE: A_t=Σ(γλ)^l δ_{t+l}. Show clipping bounds the policy update.\nCode: Implement ppo_clip_loss(logp_new, logp_old, advantages, eps) + a GAE function. Verify clipping activates when the ratio leaves [1−ε, 1+ε].\nDeliverable: ppo.py + objective derivation"
   },
   {
-    "id": "inference-int8-symmetric-quantization-001",
+    "id": "quantization-int8-symmetric-quantization-002",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "INT8 symmetric quantization",
     "_source": "Theory: Per-tensor vs per-channel vs per-group. Outlier-aware (SmoothQuant). Where errors come from.\nMath: scale = max(|x|)/127. Round-trip error ≈ scale/2. Compute error for N(0,1) input.\nCode: Implement quantize_symmetric + dequantize. Per-channel version. Round-trip error < 1% on N(0,1). Benchmark on a LLaMA linear layer.\nDeliverable: int8.py + error measure"
   },
   {
-    "id": "inference-gptq-vs-awq-002",
+    "id": "quantization-gptq-vs-awq-003",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "GPTQ vs AWQ",
     "_source": "Theory: GPTQ: optimal brain quant (Hessian-based). AWQ: activation-aware. Tradeoffs. When each.\nDeliverable: Notes"
   },
   {
-    "id": "inference-arithmetic-intensity-prefill-vs-decode-003",
+    "id": "quantization-arithmetic-intensity-prefill-vs-decode-004",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "Arithmetic intensity — prefill vs decode",
     "_source": "Theory: AI = FLOPs / bytes_accessed. A100 ridge = 156 FLOPs/byte. Prefill compute-bound, decode memory-bound.\nMath: Derive prefill AI ≈ S/2. Derive decode AI ≈ 0.5. Find break-even batch size where decode becomes compute-bound on A100.\nDeliverable: Paper derivation + plot"
   },
   {
-    "id": "inference-roofline-ttft-tpot-004",
+    "id": "quantization-roofline-ttft-tpot-005",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "Roofline + TTFT / TPOT",
     "_source": "Theory: TTFT ≈ (12L·D²·S) / GPU_FLOPS. TPOT ≈ weights_bytes / GPU_BW. When latency budget is blown.\nMath: Compute TTFT for 7B, S=512, A100 (312 TFLOPS, 50% MFU). Compute TPOT for 70B fp16 TP=4 on A100.\nCode: Roofline analyzer + latency estimator. Match theoretical within 10%.\nDeliverable: roofline.py + latency.py"
   },
   {
-    "id": "inference-speculative-decoding-005",
+    "id": "quantization-speculative-decoding-006",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "Speculative decoding",
     "_source": "Theory: Draft model + target. Accept/reject sampling. When the speedup pays off.\nMath: Prove min(1, q(t)/p(t)) preserves target distribution. Speedup E[speedup] = (1-α^(k+1))/(1-α) / (1+k·c). Compute for α=0.8, k=4, c=0.1.\nCode: Implement accept/reject sampling. Verify output distribution matches target (KL < 0.01 over 10k samples).\nDeliverable: spec_dec.py + KL test"
   },
   {
-    "id": "inference-vllm-continuous-batching-sglang-006",
+    "id": "quantization-vllm-continuous-batching-sglang-007",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "vLLM continuous batching + SGLang",
     "_source": "Theory: Iteration-level (continuous) batching vs static batching — why static wastes GPU on ragged lengths. Prefill vs decode; chunked prefill. Prefix caching. PagedAttention block manager (ties to your block_allocator). Scheduler: waiting/running/swapped queues, preemption via recompute vs swap. SGLang RadixAttention (prefix-tree KV sharing). Throughput vs latency tradeoff. Contrast TGI / TensorRT-LLM.\nMath: Estimate throughput gain of continuous vs static batching for a batch with high length variance; show the GPU-utilisation improvement (idle-slot elimination).\nCode: Simulate a continuous-batching scheduler in Python: a step loop that admits new requests each iteration, runs one decode step per active seq, evicts finished seqs, and respects a KV-block budget (reuse your BlockAllocator). Log batch occupancy over time.\nDeliverable: cont_batch_sim.py + scheduler notes"
   },
   {
-    "id": "inference-capacity-planning-007",
+    "id": "quantization-capacity-planning-008",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "Capacity planning",
     "_source": "Theory: Given model size, SLO, QPS → GPU count. Connects memory + AI + TPOT.\nCode: capacity_planner(model_size, slo_ms, qps) → GPU count. Verify LLaMA-2 70B case.\nDeliverable: capacity.py + cases"
   },
   {
-    "id": "inference-ptq-vs-qat-fp8-kv-cache-quant-008",
+    "id": "quantization-ptq-vs-qat-fp8-kv-cache-quant-009",
     "type": "concept",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "PTQ vs QAT, FP8, KV-cache quant",
     "_source": "Theory: PTQ (calibrate, no training) vs QAT (fake-quant in training with straight-through estimator). FP8 (E4M3 / E5M2) on Hopper — why the format matters. KV-cache quantisation (INT8/FP8 KV) for long context. When accuracy justifies QAT. Weight-only vs weight+activation.\nMath: Straight-through-estimator gradient for fake-quant. Compare dynamic range vs precision of E4M3 vs E5M2 vs INT8.\nCode: — (notes + a small STE fake-quant snippet)\nDeliverable: Notes + STE snippet"
   },
@@ -624,383 +624,383 @@
     "_source": "Theory: Anthropic: Constitutional AI, RLHF/DPO depth, interpretability, safety framing, 'why Anthropic'. OpenAI: GPT/o-series reasoning, RLHF, scaling laws, function calling, inference opt. DeepMind: Gemini, distributed training, TPU/JAX/XLA, research methodology. Meta: LLaMA, vLLM/PagedAttention, open infra. NVIDIA: CUDA/Triton, FlashAttention internals, TensorRT-LLM, roofline.\nDeliverable: 1-pager per company + 'why team' answers"
   },
   {
-    "id": "inference-what-is-llm-inference-prefill-vs-decode-009",
+    "id": "inference-math-what-is-llm-inference-prefill-vs-decode-003",
     "type": "concept",
     "stage": "I0",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "What is LLM inference? Prefill vs decode",
     "_source": "Theory: Autoregressive generation = one forward pass per token. Two phases: PREFILL (process the whole prompt in parallel, builds the KV cache, produces the 1st token) and DECODE (generate tokens one at a time, each attending to the cache). Why they have totally different performance characteristics. Where the time goes for short vs long prompts.\nMath: For prompt length P and G generated tokens, show prefill does ~P tokens of compute once; decode does G sequential steps. Total forward passes = 1 (prefill) + G-1 (decode).\nCode: — (draw the prefill→decode timeline and annotate what fills the KV cache at each step)\nDeliverable: Prefill/decode timeline diagram"
   },
   {
-    "id": "inference-latency-throughput-metrics-ttft-tpot-throughput-goodput-010",
+    "id": "inference-math-latency-throughput-metrics-ttft-tpot-throughput-goodput-004",
     "type": "concept",
     "stage": "I0",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "Latency & throughput metrics (TTFT, TPOT, throughput, goodput)",
     "_source": "Theory: TTFT (time-to-first-token) = prefill latency, user-perceived responsiveness. TPOT / ITL (inter-token latency) = per-token decode latency, streaming smoothness. E2E latency = TTFT + (G-1)·TPOT. Throughput = tokens/sec across all requests. Goodput = throughput that meets SLO. Why optimizing throughput can hurt TTFT (batching tradeoff).\nMath: Write E2E = TTFT + (N_out-1)·TPOT. For TTFT SLO 500ms, TPOT SLO 50ms, 200 output tokens → E2E budget ≈ 10.5s. Show how batch size trades TTFT vs throughput.\nCode: Implement a latency calculator: given TTFT, TPOT, output length → E2E; and given per-request latencies + SLOs → goodput fraction.\nDeliverable: latency_metrics.py"
   },
   {
-    "id": "inference-the-central-dichotomy-compute-bound-vs-memory-bound-011",
+    "id": "inference-math-the-central-dichotomy-compute-bound-vs-memory-bound-005",
     "type": "concept",
     "stage": "I0",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "The central dichotomy: compute-bound vs memory-bound",
     "_source": "Theory: The single most important idea in inference. Prefill = compute-bound (lots of matmul, high arithmetic intensity). Decode with batch=1 = memory-bandwidth-bound (you stream all weights from HBM to generate ONE token → GPU compute sits idle). This is why decode throughput scales with batching and with quantization, not with more FLOPs.\nMath: Arithmetic intensity AI = FLOPs / bytes_accessed. Show decode batch=1 AI ≈ 0.5 (way below the ridge) → memory-bound. Show prefill AI ≈ S/2 → compute-bound above some S.\nCode: — (write the 2-sentence explanation you'd give an interviewer for 'why is LLM decoding slow?')\nDeliverable: 60s 'why decode is slow' answer"
   },
   {
-    "id": "inference-gpu-anatomy-sms-tensor-cores-warps-012",
+    "id": "gpu-arch-gpu-anatomy-sms-tensor-cores-warps-002",
     "type": "concept",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "GPU anatomy: SMs, tensor cores, warps",
     "_source": "Theory: Streaming Multiprocessors (SMs) = the parallel compute units. Warps = 32 threads executing in lockstep (SIMT). Tensor cores = matmul accelerators (the FLOPS that matter for LLMs). CUDA cores vs tensor cores. Occupancy = active warps / max. Why LLM inference is dominated by GEMMs on tensor cores.\nCode: — (label a GPU block diagram: SM → warps → tensor/CUDA cores)\nDeliverable: GPU anatomy notes"
   },
   {
-    "id": "inference-memory-hierarchy-bandwidth-registers-sram-l2-hbm-013",
+    "id": "gpu-arch-memory-hierarchy-bandwidth-registers-sram-l2-hbm-003",
     "type": "concept",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "Memory hierarchy & bandwidth (registers → SRAM → L2 → HBM)",
     "_source": "Theory: Registers (fastest, tiny) → shared memory/SRAM (~KB-MB, per-SM, ~fast) → L2 (MB) → HBM (GB, the big one, the bottleneck). Bandwidth numbers: A100 HBM ≈ 2 TB/s, H100 ≈ 3.35 TB/s; SRAM is ~10-20× faster than HBM. Why FlashAttention exists: keep the n×n scores in SRAM, never write them to HBM.\nMath: Compute how long it takes to read 14 GB of fp16 weights from A100 HBM: 14GB / 2TB/s = 7 ms. That is the floor on decode TPOT for a 7B model at batch=1.\nCode: — (memory-hierarchy table with capacity + bandwidth per level)\nDeliverable: Memory hierarchy table"
   },
   {
-    "id": "inference-roofline-model-arithmetic-intensity-014",
+    "id": "gpu-arch-roofline-model-arithmetic-intensity-004",
     "type": "concept",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "Roofline model + arithmetic intensity",
     "_source": "Theory: Roofline: performance is min(peak_FLOPS, AI × peak_bandwidth). The 'ridge point' = peak_FLOPS / peak_BW separates memory-bound (left) from compute-bound (right). A100 ridge ≈ 312 TFLOPS / 2 TB/s = 156 FLOPs/byte. Anything with AI below 156 is memory-bound on A100. This one plot explains all inference optimization.\nMath: Compute ridge point for A100 (156) and H100 (~1000 TFLOPS / 3.35 TB/s ≈ 300 FLOPs/byte). Plot where prefill and decode land on the roofline.\nCode: Build a roofline_analyzer(flops, bytes, peak_flops, peak_bw) → bound type + achievable FLOPS. Verify it flags decode as memory-bound.\nDeliverable: roofline.py + plot"
   },
   {
-    "id": "inference-utilization-mfu-vs-mbu-015",
+    "id": "gpu-arch-utilization-mfu-vs-mbu-005",
     "type": "concept",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "Utilization: MFU vs MBU",
     "_source": "Theory: MFU (Model FLOPs Utilization) = achieved FLOPs / peak FLOPs — the right metric for compute-bound prefill/training. MBU (Model Bandwidth Utilization) = achieved BW / peak BW — the right metric for memory-bound decode. Why reporting MFU for decode is misleading. Typical real MFU 30-50%, MBU 60-80%.\nMath: Given tokens/sec and model size, back out MBU = (params·bytes·tokens_per_sec)/peak_BW. Compute MBU for 7B fp16 at 140 tok/s on A100.\nCode: — (add MFU/MBU output to your roofline tool)\nDeliverable: MFU/MBU notes"
   },
   {
-    "id": "inference-numeric-formats-fp32-tf32-fp16-bf16-fp8-int8-int4-016",
+    "id": "gpu-arch-numeric-formats-fp32-tf32-fp16-bf16-fp8-int8-int4-006",
     "type": "concept",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "Numeric formats: FP32/TF32/FP16/BF16/FP8/INT8/INT4",
     "_source": "Theory: Bytes per param and dynamic range/precision tradeoffs. FP16 (5-exp) vs BF16 (8-exp, no loss scaling) vs FP8 E4M3/E5M2 (Hopper) vs INT8/INT4 (integer, needs scale). Why weights in low precision cut both memory AND bandwidth → directly speeds up memory-bound decode. Accuracy cliffs.\nMath: Tabulate bytes/param and represent-able range for each format. Show a 70B model: fp16=140GB, int8=70GB, int4=35GB → which fit on 1×/2×/8× 80GB GPUs.\nCode: — (precision comparison table)\nDeliverable: Precision table"
   },
   {
-    "id": "inference-flop-counting-for-a-forward-pass-017",
+    "id": "inference-math-flop-counting-for-a-forward-pass-006",
     "type": "concept",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "FLOP counting for a forward pass",
     "_source": "Theory: A (M×K)·(K×N) GEMM = 2·M·K·N FLOPs. Forward pass ≈ 2·N·D FLOPs per token (N=params, D=tokens). Per-layer breakdown: QKV proj, attention scores, AV, output proj, FFN (dominant). Backward ≈ 2× forward, so training ≈ 6ND; inference forward-only ≈ 2ND.\nMath: Count FLOPs per op for one transformer layer (d_model, n_heads, seq S). Sum over L layers. Verify total ≈ 2·N per token within 5% for GPT-2 small.\nCode: flop_counter(L,D,H,S,vocab) for the forward pass; test on LLaMA-7B at S=2048.\nDeliverable: flop_counter.py"
   },
   {
-    "id": "inference-ttft-prefill-estimation-018",
+    "id": "inference-math-ttft-prefill-estimation-007",
     "type": "concept",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "TTFT (prefill) estimation",
     "_source": "Theory: Prefill is compute-bound: process all S prompt tokens in parallel. TTFT ≈ prefill_FLOPs / (peak_FLOPS · MFU). Scales ~linearly with prompt length (quadratically for the attention term at long context). Batching prompts increases throughput but each TTFT grows.\nMath: TTFT ≈ (2·N·S)/(FLOPS·MFU). Compute TTFT for 7B, S=512, A100 (312 TFLOPS, 50% MFU) ≈ 12·L·D²·S/FLOPS. Show the long-context S² attention term overtaking.\nCode: Add ttft_estimate() to your latency tool; compare to a measured vLLM prefill within 20%.\nDeliverable: ttft.py + validation"
   },
   {
-    "id": "inference-tpot-decode-estimation-019",
+    "id": "inference-math-tpot-decode-estimation-008",
     "type": "concept",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "TPOT (decode) estimation",
     "_source": "Theory: Decode at batch=1 is bandwidth-bound: TPOT ≈ weights_bytes / (peak_BW · MBU). Independent of prompt length (KV read is small vs weights) until context is huge. Increasing batch amortizes the weight read across many sequences → higher throughput, same-ish TPOT until compute-bound.\nMath: TPOT ≈ model_bytes / GPU_BW. 7B fp16 on A100 = 14GB/2TB/s = 7ms/tok. 70B fp16 TP=4 on A100 = (140/4)GB / 2TB/s ≈ 17.5ms/tok. Find the batch size where decode turns compute-bound.\nCode: tpot_estimate(model_bytes, bw, batch); verify the 7B and 70B cases.\nDeliverable: tpot.py"
   },
   {
-    "id": "inference-inference-memory-footprint-weights-kv-activations-020",
+    "id": "inference-math-inference-memory-footprint-weights-kv-activations-009",
     "type": "concept",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "Inference memory footprint: weights + KV + activations",
     "_source": "Theory: Inference memory = weights (2P fp16) + KV cache (grows with batch × seq) + activations (small, transient) + framework overhead. Unlike training (16P for optimizer states), inference weights are just 2P. At scale the KV cache, not the weights, is what caps concurrency.\nMath: Total = 2P + KV(batch,seq) + overhead. For 7B fp16: 14GB weights; at batch=32, seq=2048 KV can be another ~8-16GB. Compute max concurrent sequences on an 80GB GPU.\nCode: llm_infer_memory(params_B, dtype, batch, seq, layers, kv_heads, d_head) → GB breakdown.\nDeliverable: infer_mem.py + cases"
   },
   {
-    "id": "inference-kv-cache-mechanics-why-it-exists-021",
+    "id": "kv-cache-kv-cache-mechanics-why-it-exists-002",
     "type": "concept",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "KV cache mechanics — why it exists",
     "_source": "Theory: Without a cache, every decode step recomputes K,V for all previous tokens → O(n²) per step, O(n³) total. The KV cache stores past K,V so each new token only computes its own Q and attends to cached K,V → O(n) per step. This is THE core inference optimization and the source of the memory pressure everything else fights.\nMath: Derive total decode compute with vs without the cache. Show cache turns per-step cost from O(n·d) recompute to O(d) new + O(n·d) attend.\nCode: Add past_key_values to your GPT block: prefill stores K,V; decode appends. Verify outputs identical with/without cache; benchmark ~10× speedup over 10 steps.\nDeliverable: kv_cache.py + benchmark"
   },
   {
-    "id": "inference-kv-cache-memory-formula-022",
+    "id": "kv-cache-kv-cache-memory-formula-003",
     "type": "concept",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "KV cache memory formula",
     "_source": "Theory: The number every inference interview wants. KV bytes = 2 · L · S · n_kv_heads · d_head · dtype_bytes · batch. (2 = K and V.) Grows linearly with batch AND sequence length — this is why long context and high concurrency are expensive, and why GQA + quantization target it.\nMath: KV bytes = 2·L·S·G·d_h·dtype·B. Compute for LLaMA-2 70B (L=80, G=8, d_h=128, S=4096, fp16, B=8) ≈ 2·80·4096·8·128·2·8 ≈ 84 GB — larger than the 70B weights at that batch!\nCode: kv_cache_bytes(L,S,kv_heads,d_head,dtype,batch); verify the 70B case.\nDeliverable: kv_calc.py"
   },
   {
-    "id": "inference-mqa-gqa-shrinking-the-kv-cache-023",
+    "id": "kv-cache-mqa-gqa-shrinking-the-kv-cache-004",
     "type": "concept",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "MQA & GQA — shrinking the KV cache",
     "_source": "Theory: Multi-Query Attention: all query heads share ONE K,V head → KV cache shrinks by factor H. Grouped-Query Attention: G groups → shrink by H/G, a quality/memory compromise (LLaMA-2/3 use GQA). This directly raises max batch size and context length. Why quality holds up.\nMath: KV reduction factor MQA = H; GQA = H/G. LLaMA-2 70B: 64 Q heads, 8 KV heads → 8× smaller KV cache vs full MHA.\nCode: Modify MHA so num_kv_heads ≠ num_heads; repeat_interleave K,V to match Q. Verify shapes + the memory saving.\nDeliverable: gqa.py + memory calc"
   },
   {
-    "id": "inference-kv-cache-quantization-024",
+    "id": "kv-cache-kv-cache-quantization-005",
     "type": "concept",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "KV cache quantization",
     "_source": "Theory: Store the cache in INT8/FP8 instead of fp16 → 2× more context/batch for a small accuracy hit. Per-channel/per-token scales. Asymmetric for the outlier-heavy K. When it's worth it (long context, high concurrency). Tradeoffs vs GQA (they compose).\nMath: Show KV quant halves KV bytes; recompute max concurrency for the 70B case with INT8 KV.\nCode: Quantize the cache to INT8 in your decode path (fake-quant); measure accuracy delta on a short generation.\nDeliverable: kv_quant.py"
   },
   {
-    "id": "inference-pagedattention-fragmentation-block-table-cow-025",
+    "id": "kv-cache-pagedattention-fragmentation-block-table-cow-006",
     "type": "concept",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "PagedAttention — fragmentation, block table, CoW",
     "_source": "Theory: Traditional KV cache pre-allocates max_seq per request → ~60-80% wasted memory from internal + external fragmentation. PagedAttention (vLLM) stores KV in fixed-size blocks (e.g. 16 tokens) mapped by a block table (virtual→physical, like OS paging). Waste ≤ block_size-1 tokens → 95%+ utilization. Copy-on-write enables prompt/beam sharing.\nMath: Draw a block table for 3 sequences (lengths 35, 20, 45; block=16). Show waste = block_size-1 per seq. Compute utilization gain vs pre-allocation.\nCode: Simulate a BlockAllocator: allocate/free/copy_on_write for 5 sequences (len 10-100, block=16). Verify no two seqs share a physical block except under CoW.\nDeliverable: block_allocator.py + diagram"
   },
   {
-    "id": "inference-flashattention-io-complexity-online-softmax-026",
+    "id": "attention-kernels-flashattention-io-complexity-online-softmax-002",
     "type": "concept",
     "stage": "I4",
-    "category": "inference",
+    "category": "attention-kernels",
     "topic": "FlashAttention — IO complexity + online softmax",
     "_source": "Theory: Standard attention materializes the n×n scores in HBM → O(n²) memory traffic, the real bottleneck (not FLOPs). FlashAttention tiles Q,K,V into SRAM and computes softmax incrementally (online softmax) so it never writes the n×n matrix → O(n²d/M) HBM accesses (M=SRAM size). ~26× fewer HBM reads at n=2048, d=128, M=100KB.\nMath: Derive IO = O(n²d/M). Write the online-softmax recurrence: m=max(m₁,m₂), ℓ=e^(m₁-m)ℓ₁+e^(m₂-m)ℓ₂, rescale O. Compute the HBM-access speedup for A100.\nCode: — (paper derivation + speedup calc; optional numpy online-softmax that matches full softmax)\nDeliverable: FA derivation + speedup"
   },
   {
-    "id": "inference-flashattention-v1-v2-v3-backward-027",
+    "id": "attention-kernels-flashattention-v1-v2-v3-backward-003",
     "type": "concept",
     "stage": "I4",
-    "category": "inference",
+    "category": "attention-kernels",
     "topic": "FlashAttention v1/v2/v3 + backward",
     "_source": "Theory: v1: tiling + recomputation in backward (trade compute for memory). v2: better work partitioning across warps, fewer non-matmul ops, ~2× faster. v3: Hopper async (TMA, warp-specialization, FP8). Why FA made long context practical. Backward pass recomputes the forward stats instead of storing them.\nCode: — (one-paragraph 'what each FA version improved' + backward-recompute sketch)\nDeliverable: FA versions notes"
   },
   {
-    "id": "inference-chunked-prefill-028",
+    "id": "attention-kernels-chunked-prefill-004",
     "type": "concept",
     "stage": "I4",
-    "category": "inference",
+    "category": "attention-kernels",
     "topic": "Chunked prefill",
     "_source": "Theory: Long prompts make prefill a latency spike that blocks decode requests (head-of-line blocking). Chunked prefill splits a long prompt into chunks and interleaves them with ongoing decode steps in the same batch → smoother TPOT, better GPU utilization, tunable TTFT/throughput. Default in modern vLLM.\nMath: Show how a 4096-token prefill split into 512-token chunks lets decode requests progress between chunks; estimate the TPOT jitter reduction.\nCode: — (scheduling diagram: monolithic vs chunked prefill interleaved with decode)\nDeliverable: Chunked-prefill diagram"
   },
   {
-    "id": "inference-static-vs-dynamic-vs-continuous-iteration-level-batching-029",
+    "id": "batching-static-vs-dynamic-vs-continuous-iteration-level-batching-001",
     "type": "concept",
     "stage": "I5",
-    "category": "inference",
+    "category": "batching",
     "topic": "Static vs dynamic vs continuous (iteration-level) batching",
     "_source": "Theory: Static batching: wait to fill a batch, all finish together → padding + head-of-line waste. Dynamic batching: pad to the longest in a time window. Continuous (iteration-level) batching (Orca/vLLM): the scheduler re-forms the batch EVERY decode step — finished sequences leave, new ones join immediately. Huge throughput win on ragged workloads.\nMath: Estimate GPU-utilization gain of continuous vs static batching for a batch with high length variance (idle-slot elimination). Show why static wastes on the longest sequence.\nCode: Simulate a continuous-batching loop: admit new requests each iteration, run 1 decode step per active seq, evict finished, respect a KV-block budget. Log batch occupancy over time.\nDeliverable: cont_batch_sim.py"
   },
   {
-    "id": "inference-scheduler-internals-queues-preemption-swap-vs-recompute-030",
+    "id": "batching-scheduler-internals-queues-preemption-swap-vs-recompute-002",
     "type": "concept",
     "stage": "I5",
-    "category": "inference",
+    "category": "batching",
     "topic": "Scheduler internals: queues, preemption, swap vs recompute",
     "_source": "Theory: vLLM-style scheduler: waiting / running / swapped queues. When KV memory is full it PREEMPTS lower-priority sequences — either swap their KV to CPU (copy back later) or recompute (drop KV, redo prefill on resume). FCFS vs priority. Admission control to protect SLOs. Starvation avoidance.\nMath: Compare swap (extra PCIe bandwidth, keep KV) vs recompute (extra FLOPs, free KV) cost; give the rule of thumb for when each wins.\nCode: Extend your scheduler sim with a KV budget that triggers preemption; implement both swap and recompute strategies and compare.\nDeliverable: scheduler_sim.py"
   },
   {
-    "id": "inference-prefix-caching-kv-reuse-radixattention-031",
+    "id": "batching-prefix-caching-kv-reuse-radixattention-003",
     "type": "concept",
     "stage": "I5",
-    "category": "inference",
+    "category": "batching",
     "topic": "Prefix caching / KV reuse / RadixAttention",
     "_source": "Theory: Reuse the KV of a shared prompt prefix (system prompt, few-shot examples, chat history) across requests instead of recomputing prefill → big TTFT + throughput win for repeated prefixes. SGLang's RadixAttention stores KV in a radix tree keyed by token prefix; LRU eviction. Automatic in vLLM's prefix caching.\nMath: For a 2000-token system prompt shared by 1000 requests, compute prefill FLOPs saved by caching the prefix once.\nCode: Implement a radix/trie prefix cache: insert token sequences, match longest cached prefix, LRU-evict. Verify a repeated prefix hits the cache.\nDeliverable: prefix_cache.py"
   },
   {
-    "id": "inference-prefill-decode-disaggregation-032",
+    "id": "batching-prefill-decode-disaggregation-004",
     "type": "concept",
     "stage": "I5",
-    "category": "inference",
+    "category": "batching",
     "topic": "Prefill-decode disaggregation",
     "_source": "Theory: Prefill (compute-bound) and decode (memory-bound) contend for the same GPU and interfere. Disaggregation (Splitwise, DistServe) runs prefill on one pool of GPUs and decode on another, transferring the KV cache between them → each pool tuned for its regime, better goodput. The cost: KV transfer bandwidth.\nMath: Sketch the KV-transfer cost between prefill and decode nodes; show when disaggregation beats co-location (high prefill/decode interference).\nCode: — (architecture diagram: disaggregated prefill and decode pools + KV transfer)\nDeliverable: Disagg diagram"
   },
   {
-    "id": "inference-goodput-slo-aware-scheduling-033",
+    "id": "batching-goodput-slo-aware-scheduling-005",
     "type": "concept",
     "stage": "I5",
-    "category": "inference",
+    "category": "batching",
     "topic": "Goodput & SLO-aware scheduling",
     "_source": "Theory: Raw throughput is the wrong target — GOODPUT (requests served within SLO) is what matters. SLO-aware schedulers prioritize to maximize goodput: cap batch size to protect TTFT, reserve capacity for decode, admission-control under overload. TTFT vs TPOT vs throughput is a 3-way tradeoff you tune per product.\nMath: Given per-request TTFT/TPOT and SLO thresholds, compute goodput; show how raising batch size increases throughput but drops goodput once TTFT SLO breaks.\nCode: Add goodput measurement to your sim; sweep batch size and plot throughput vs goodput.\nDeliverable: goodput.py + curve"
   },
   {
-    "id": "inference-int8-quantization-symmetric-asym-per-tensor-channel-group-034",
+    "id": "quantization-int8-quantization-symmetric-asym-per-tensor-channel-group-010",
     "type": "concept",
     "stage": "I6",
-    "category": "inference",
+    "category": "quantization",
     "topic": "INT8 quantization: symmetric/asym, per-tensor/channel/group",
     "_source": "Theory: Map fp values to int8 with a scale (and zero-point if asymmetric). Granularity: per-tensor (1 scale, coarse) → per-channel (1 per output) → per-group (1 per G weights, best accuracy). Outliers wreck per-tensor → per-channel/group or outlier handling. Weight-only cuts memory+BW (helps decode); activation quant also cuts compute.\nMath: scale = max(|x|)/127; round-trip error ≈ scale/2. Compute error for N(0,1) input; show per-channel beats per-tensor.\nCode: quantize_symmetric + dequantize, per-tensor and per-channel. Round-trip error < 1% on N(0,1); benchmark on a LLaMA linear layer.\nDeliverable: int8.py + error measure"
   },
   {
-    "id": "inference-gptq-awq-smoothquant-035",
+    "id": "quantization-gptq-awq-smoothquant-011",
     "type": "concept",
     "stage": "I6",
-    "category": "inference",
+    "category": "quantization",
     "topic": "GPTQ / AWQ / SmoothQuant",
     "_source": "Theory: GPTQ: layer-wise, Hessian-based (Optimal Brain Quant) weight rounding → strong 4-bit weight-only. AWQ: activation-aware — protect the ~1% salient weight channels (scale by activation magnitude) → fast, accurate 4-bit. SmoothQuant: migrate activation outliers into weights so W8A8 works. When to use each.\nCode: — (comparison table: method, W/A bits, calibration cost, accuracy, when to use)\nDeliverable: GPTQ/AWQ/SmoothQuant table"
   },
   {
-    "id": "inference-fp8-kv-cache-quant-ptq-vs-qat-036",
+    "id": "quantization-fp8-kv-cache-quant-ptq-vs-qat-012",
     "type": "concept",
     "stage": "I6",
-    "category": "inference",
+    "category": "quantization",
     "topic": "FP8, KV-cache quant, PTQ vs QAT",
     "_source": "Theory: FP8 (E4M3/E5M2) on Hopper: near-fp16 quality at 2× throughput/memory. KV-cache quant for long context. Weight-only (decode BW) vs weight+activation (also prefill compute). PTQ (calibrate only) vs QAT (fake-quant in training with straight-through estimator) — QAT when PTQ accuracy is unacceptable.\nMath: Straight-through-estimator gradient for fake-quant. Compare dynamic range vs precision of E4M3, E5M2, INT8.\nCode: — (STE fake-quant snippet + notes)\nDeliverable: PTQ/QAT/FP8 notes"
   },
   {
-    "id": "inference-sampling-recap-greedy-top-k-top-p-temperature-037",
+    "id": "decoding-sampling-recap-greedy-top-k-top-p-temperature-002",
     "type": "concept",
     "stage": "I7",
-    "category": "inference",
+    "category": "decoding",
     "topic": "Sampling recap: greedy / top-k / top-p / temperature",
     "_source": "Theory: How each shapes the output distribution and why it matters for latency (they're cheap, but repetition penalties and large vocabs add up). Temperature scaling, nucleus (top-p) sampling, top-k, min-p. Determinism (temp→0 ≈ greedy). Batched sampling on GPU.\nCode: top_k_sample, top_p_sample with temperature; verify temp=0.01 ≈ greedy, temp=2.0 chaotic. Build generate().\nDeliverable: sampling.py"
   },
   {
-    "id": "inference-speculative-decoding-draft-target-accept-reject-038",
+    "id": "decoding-speculative-decoding-draft-target-accept-reject-003",
     "type": "concept",
     "stage": "I7",
-    "category": "inference",
+    "category": "decoding",
     "topic": "Speculative decoding — draft + target, accept/reject",
     "_source": "Theory: A small fast DRAFT model proposes k tokens; the big TARGET verifies them in ONE forward pass; a rejection-sampling rule accepts a prefix that provably preserves the target distribution. Turns memory-bound decode into fewer, denser target passes → 2-3× speedup with no quality loss. Speedup depends on acceptance rate α and draft cost.\nMath: Prove min(1, q(t)/p(t)) acceptance keeps the target distribution. E[speedup] = ((1-α^(k+1))/(1-α)) / (1+k·c). Compute for α=0.8, k=4, c=0.1 → ~3×.\nCode: Implement accept/reject speculative sampling; verify output distribution matches the target (KL < 0.01 over 10k samples).\nDeliverable: spec_decode.py + KL test"
   },
   {
-    "id": "inference-advanced-speculation-medusa-eagle-lookahead-n-gram-039",
+    "id": "decoding-advanced-speculation-medusa-eagle-lookahead-n-gram-004",
     "type": "concept",
     "stage": "I7",
-    "category": "inference",
+    "category": "decoding",
     "topic": "Advanced speculation: Medusa, EAGLE, lookahead, n-gram",
     "_source": "Theory: Self-speculation without a separate draft model. Medusa: extra decoding heads predict multiple future tokens + tree attention verifies. EAGLE: predict at the feature level (more accurate drafts). Lookahead decoding: Jacobi-style parallel n-gram guesses. Prompt-lookup / n-gram: copy from the prompt (great for RAG/summarization).\nMath: Compare tree-attention verification (many candidates/pass) vs linear speculation; estimate acceptance gains.\nCode: — (n-gram / prompt-lookup speculative draft: propose tokens by matching recent context to the prompt)\nDeliverable: prompt_lookup.py + notes"
   },
   {
-    "id": "inference-structured-constrained-decoding-grammars-json-040",
+    "id": "decoding-structured-constrained-decoding-grammars-json-005",
     "type": "concept",
     "stage": "I7",
-    "category": "inference",
+    "category": "decoding",
     "topic": "Structured / constrained decoding (grammars, JSON)",
     "_source": "Theory: Force outputs to match a schema/regex/CFG by masking invalid next-token logits at each step (guided/constrained decoding). Outlines/XGrammar/GBNF. Near-zero overhead with compiled FSMs. Critical for tool calling and reliable JSON. Failure modes: tokenization mismatches, over-constraining hurting quality.\nMath: Show how a JSON grammar restricts the allowed next-token set at each step; estimate the logit-mask cost.\nCode: Implement a simple constrained decoder: mask logits to a token whitelist derived from a regex/FSM state; generate valid JSON.\nDeliverable: constrained_decode.py"
   },
   {
-    "id": "inference-tensor-parallelism-tp-at-inference-041",
+    "id": "distributed-inference-tensor-parallelism-tp-at-inference-001",
     "type": "concept",
     "stage": "I8",
-    "category": "inference",
+    "category": "distributed-inference",
     "topic": "Tensor parallelism (TP) at inference",
     "_source": "Theory: Split each layer's weight matrices across GPUs (Megatron-style: column-parallel then row-parallel), all-reduce per layer. Needed when the model doesn't fit on one GPU, and to cut TPOT (weights split → less HBM per GPU to stream). Cost: an all-reduce every layer → needs fast interconnect (NVLink). Best within a node.\nMath: 70B fp16 = 140GB → needs TP≥2 on 80GB GPUs. Show TP=4 cuts per-GPU weight read to 35GB → TPOT ≈ 35/2000 = 17.5ms. Count all-reduce bytes per token.\nCode: — (TP sharding diagram for one attention + FFN layer; annotate the comm points)\nDeliverable: TP diagram + math"
   },
   {
-    "id": "inference-pipeline-parallelism-pp-at-inference-042",
+    "id": "distributed-inference-pipeline-parallelism-pp-at-inference-002",
     "type": "concept",
     "stage": "I8",
-    "category": "inference",
+    "category": "distributed-inference",
     "topic": "Pipeline parallelism (PP) at inference",
     "_source": "Theory: Split layers across GPUs into stages; micro-batches flow through the pipeline. Adds memory headroom but introduces pipeline 'bubbles' that hurt latency — less ideal for low-latency decode than TP. Good across nodes (less comm than TP). Often combined: TP within a node, PP across nodes.\nMath: Estimate pipeline bubble fraction = (stages-1)/(micro_batches+stages-1); show why PP suits throughput, TP suits latency.\nCode: — (PP vs TP decision notes with the bubble formula)\nDeliverable: PP notes"
   },
   {
-    "id": "inference-expert-parallelism-moe-serving-043",
+    "id": "distributed-inference-expert-parallelism-moe-serving-003",
     "type": "concept",
     "stage": "I8",
-    "category": "inference",
+    "category": "distributed-inference",
     "topic": "Expert parallelism (MoE serving)",
     "_source": "Theory: MoE routes each token to top-k of N experts → only a fraction of params active per token (compute-cheap) but ALL experts must be resident (memory-heavy). Expert parallelism shards experts across GPUs; all-to-all routes tokens to their experts. Load imbalance and all-to-all bandwidth are the serving pain points.\nMath: Mixtral 8×7B: 47B total params, ~13B active per token. Show memory needs all 47B resident but compute is ~13B → the serving tradeoff.\nCode: — (all-to-all expert routing diagram + active vs total param math)\nDeliverable: EP diagram"
   },
   {
-    "id": "inference-long-context-parallelism-sequence-ring-attention-044",
+    "id": "distributed-inference-long-context-parallelism-sequence-ring-attention-004",
     "type": "concept",
     "stage": "I8",
-    "category": "inference",
+    "category": "distributed-inference",
     "topic": "Long-context parallelism (sequence / ring attention)",
     "_source": "Theory: Very long context blows up KV cache and attention. Sequence/context parallelism splits the sequence across GPUs; ring attention passes K,V blocks around a ring so each GPU sees all keys without materializing the full matrix. Enables million-token context. Comm-bound.\nMath: Show KV cache for 1M-token context is infeasible on one GPU; ring attention distributes it across R GPUs → KV/R each.\nCode: — (ring-attention dataflow sketch)\nDeliverable: Ring attention notes"
   },
   {
-    "id": "inference-collective-comms-interconnect-nvlink-infiniband-all-reduce-045",
+    "id": "distributed-inference-collective-comms-interconnect-nvlink-infiniband-all-reduce-005",
     "type": "concept",
     "stage": "I8",
-    "category": "inference",
+    "category": "distributed-inference",
     "topic": "Collective comms + interconnect (NVLink, InfiniBand, all-reduce)",
     "_source": "Theory: The comms primitives behind all parallelism: all-reduce, all-gather, reduce-scatter, all-to-all. Ring all-reduce bandwidth = α·(N-1)/N. Interconnect tiers: NVLink (intra-node, ~900 GB/s H100) vs PCIe vs InfiniBand (inter-node). Why TP must stay on NVLink and PP can cross nodes.\nMath: Ring all-reduce effective BW = α·(N-1)/N × link_BW; latency = O(N) hops. Compute all-reduce time for a TP=8 layer's activations on NVLink.\nCode: — (comms primitives + interconnect tier table)\nDeliverable: Comms notes"
   },
   {
-    "id": "inference-vllm-end-to-end-architecture-046",
+    "id": "serving-vllm-end-to-end-architecture-001",
     "type": "concept",
     "stage": "I9",
-    "category": "inference",
+    "category": "serving",
     "topic": "vLLM end-to-end architecture",
     "_source": "Theory: Tie it all together: OpenAI-compatible API server → tokenizer → scheduler (continuous batching + preemption) → block manager (PagedAttention) → model workers (TP/PP) → sampler → detokenizer/streaming. How a request flows through. PagedAttention + continuous batching are the two ideas that made vLLM.\nMath: Trace a request end-to-end and mark where TTFT vs TPOT time is spent and where KV memory is allocated/freed.\nCode: Build a mock vLLM: API queue → scheduler (your cont-batch loop) → block allocator → 'model' step → streaming response. Wire your earlier components together.\nDeliverable: mini_vllm.py + arch diagram"
   },
   {
-    "id": "inference-sglang-radixattention-structured-frontend-047",
+    "id": "serving-sglang-radixattention-structured-frontend-002",
     "type": "concept",
     "stage": "I9",
-    "category": "inference",
+    "category": "serving",
     "topic": "SGLang — RadixAttention + structured frontend",
     "_source": "Theory: SGLang: RadixAttention (automatic prefix KV sharing via a radix tree) + a programming frontend for complex LLM programs (branching, parallelism, constrained decoding). When SGLang's prefix sharing beats vLLM (heavy shared prefixes, agentic/multi-turn). Cache-aware scheduling.\nMath: Show the throughput win of RadixAttention on a workload where 90% of requests share a long prefix.\nCode: — (compare your prefix_cache.py to RadixAttention; note the radix-tree advantage)\nDeliverable: SGLang notes"
   },
   {
-    "id": "inference-engine-comparison-vllm-tensorrt-llm-tgi-lmdeploy-deepspeed-048",
+    "id": "serving-engine-comparison-vllm-tensorrt-llm-tgi-lmdeploy-deepspeed-003",
     "type": "concept",
     "stage": "I9",
-    "category": "inference",
+    "category": "serving",
     "topic": "Engine comparison: vLLM / TensorRT-LLM / TGI / LMDeploy / DeepSpeed",
     "_source": "Theory: vLLM (PagedAttention, easy, broad models), TensorRT-LLM (NVIDIA, compiled kernels, fastest on NVIDIA, heavier to build), TGI (HuggingFace, production features), LMDeploy (TurboMind), DeepSpeed-MII. How to choose: hardware, model coverage, latency vs ease, quantization support. Owns your 'which engine and why'.\nCode: — (decision table: engine × [speed, model support, quant, ease, ecosystem] + a 60s 'which would you pick' answer)\nDeliverable: Engine comparison table"
   },
   {
-    "id": "inference-request-lifecycle-server-streaming-tokenization-049",
+    "id": "serving-request-lifecycle-server-streaming-tokenization-004",
     "type": "concept",
     "stage": "I9",
-    "category": "inference",
+    "category": "serving",
     "topic": "Request lifecycle: server, streaming, tokenization",
     "_source": "Theory: The serving surface: OpenAI-compatible endpoints, SSE token streaming, tokenizer/detokenizer edge cases (partial UTF-8, special tokens), stop sequences, max_tokens, logprobs, request cancellation, timeouts. Tokenization cost and batching of the tokenizer itself.\nCode: Wrap your mini engine in a streaming server (yield tokens as generated); handle stop sequences and cancellation.\nDeliverable: stream_server.py"
   },
   {
-    "id": "inference-torch-compile-cuda-graphs-kernel-fusion-for-inference-050",
+    "id": "serving-torch-compile-cuda-graphs-kernel-fusion-for-inference-005",
     "type": "concept",
     "stage": "I9",
-    "category": "inference",
+    "category": "serving",
     "topic": "torch.compile / CUDA graphs / kernel fusion for inference",
     "_source": "Theory: Reduce Python + kernel-launch overhead (which dominates small-batch decode). CUDA graphs capture and replay the decode step to kill launch overhead. torch.compile fuses ops. Custom fused kernels (fused RMSNorm+matmul, fused sampling). Why these matter most in the memory-bound, launch-overhead-dominated decode regime.\nMath: Estimate kernel-launch overhead per decode step (hundreds of small kernels × ~5µs) and the CUDA-graph savings.\nCode: — (measure decode step time with/without CUDA graphs conceptually; list fusible ops)\nDeliverable: Fusion/graphs notes"
   },
   {
-    "id": "inference-capacity-planning-gpus-for-a-qps-slo-target-051",
+    "id": "serving-capacity-planning-gpus-for-a-qps-slo-target-006",
     "type": "concept",
     "stage": "I10",
-    "category": "inference",
+    "category": "serving",
     "topic": "Capacity planning — GPUs for a QPS/SLO target",
     "_source": "Theory: The end-to-end sizing question. Given model size, target QPS, input/output length distribution, and TTFT/TPOT SLOs → number and type of GPUs. Combines memory (weights+KV → max concurrency), TPOT (decode BW), and TTFT (prefill compute). The classic senior interview design question.\nMath: capacity = f(QPS, tokens/req, TPOT SLO, per-GPU throughput). Work a full example: LLaMA-2 70B, 10 QPS, 500-token outputs, TPOT 30ms → GPU count.\nCode: capacity_planner(model_size, slo_ms, qps, in_len, out_len) → GPU count + type; verify the 70B case.\nDeliverable: capacity.py + worked example"
   },
   {
-    "id": "inference-autoscaling-load-balancing-request-routing-052",
+    "id": "serving-autoscaling-load-balancing-request-routing-007",
     "type": "concept",
     "stage": "I10",
-    "category": "inference",
+    "category": "serving",
     "topic": "Autoscaling, load balancing, request routing",
     "_source": "Theory: Scale replicas on queue depth / GPU-KV utilization (not CPU). Routing: least-loaded, session-affinity (route to the replica holding your prefix cache — cache-aware routing), prefill/decode-aware routing. Cold-start problem (model load = 10s-min → keep warm pools). Handling bursts + overload (shed vs queue).\nMath: Show why routing to the replica with your cached prefix beats round-robin (avoids re-prefill); estimate the TTFT difference.\nCode: — (autoscaling + routing policy notes; cache-aware routing rationale)\nDeliverable: Scaling/routing notes"
   },
   {
-    "id": "inference-cost-per-token-cost-optimization-053",
+    "id": "serving-cost-per-token-cost-optimization-008",
     "type": "concept",
     "stage": "I10",
-    "category": "inference",
+    "category": "serving",
     "topic": "Cost per token / cost optimization",
     "_source": "Theory: $/1M tokens = (GPU $/hr) / (tokens/hr at target SLO). Levers: quantization, batching/goodput, GQA, spec decoding, right-sizing the GPU, spot instances, disaggregation, caching. How to reason about cost vs latency vs quality as a Pareto frontier. Owns your $5K-savings story.\nMath: Compute $/1M tokens for 7B on an A100 at measured throughput; show how int8 + better batching moves the number.\nCode: cost_per_token(gpu_cost_hr, throughput_tok_s); tabulate the effect of each optimization lever.\nDeliverable: cost_model.py"
   },
   {
-    "id": "inference-multi-lora-serving-s-lora-model-swapping-054",
+    "id": "serving-multi-lora-serving-s-lora-model-swapping-009",
     "type": "concept",
     "stage": "I10",
-    "category": "inference",
+    "category": "serving",
     "topic": "Multi-LoRA serving (S-LoRA) & model swapping",
     "_source": "Theory: Serve many fine-tuned LoRA adapters on ONE base model: keep the base resident, swap tiny adapters per request, batch across adapters (S-LoRA: unified paging for adapter weights + heterogeneous batching). Beats loading a full model per tenant. Model swapping / multiplexing for cold models.\nMath: Compare memory: N full 7B models (N×14GB) vs 1 base + N LoRA adapters (14GB + N×~40MB). Show the concurrency win.\nCode: — (multi-adapter batching sketch: route requests to adapters, batch on the shared base)\nDeliverable: S-LoRA notes"
   },
   {
-    "id": "inference-observability-monitoring-for-inference-055",
+    "id": "serving-observability-monitoring-for-inference-010",
     "type": "concept",
     "stage": "I10",
-    "category": "inference",
+    "category": "serving",
     "topic": "Observability & monitoring for inference",
     "_source": "Theory: The metrics that matter: TTFT/TPOT/E2E percentiles (p50/p95/p99), queue depth, batch size, KV-cache utilization, preemption rate, GPU MBU/MFU, goodput, tokens/sec, error/timeout rate. Alerting on SLO breach. Load testing. Ties to your production monitoring / 86-metric work.\nCode: — (dashboard spec: the 10 inference metrics you'd chart + alert thresholds)\nDeliverable: Observability spec"
   },
   {
-    "id": "inference-disaggregated-serving-splitwise-distserve-056",
+    "id": "inference-disaggregated-serving-splitwise-distserve-001",
     "type": "concept",
     "stage": "I11",
     "category": "inference",
@@ -1008,7 +1008,7 @@
     "_source": "Theory: Deep-dive on separating prefill and decode clusters: independent scaling, per-phase hardware (prefill likes compute, decode likes bandwidth), KV transfer over fast interconnect. Goodput gains and when the KV-transfer cost dominates. State of the art in large deployments.\nMath: Model total cost co-located vs disaggregated as prefill/decode ratio varies; find the crossover.\nCode: — (deep dive notes on Splitwise/DistServe design choices)\nDeliverable: Disagg deep-dive"
   },
   {
-    "id": "inference-kv-offloading-long-context-eviction-streamingllm-h2o-057",
+    "id": "inference-kv-offloading-long-context-eviction-streamingllm-h2o-002",
     "type": "concept",
     "stage": "I11",
     "category": "inference",
@@ -1016,7 +1016,7 @@
     "_source": "Theory: When KV won't fit: offload to CPU/NVMe (hierarchical KV, e.g. LMCache) with prefetch, or EVICT tokens. StreamingLLM (attention sinks + recent window) enables infinite streaming. H2O / heavy-hitter eviction keeps only high-attention tokens. Quality vs memory tradeoffs.\nMath: Show attention-sink intuition: keeping the first few tokens + a recent window preserves quality at O(window) KV instead of O(n).\nCode: Implement a sliding-window + attention-sink KV policy in your decode loop; verify bounded KV memory over a long generation.\nDeliverable: streaming_kv.py"
   },
   {
-    "id": "inference-writing-inference-kernels-cuda-triton-058",
+    "id": "inference-writing-inference-kernels-cuda-triton-003",
     "type": "concept",
     "stage": "I11",
     "category": "inference",
@@ -1024,7 +1024,7 @@
     "_source": "Theory: When framework kernels aren't enough: Triton (Python-like, blocks + program_id) for fused softmax, fused RMSNorm, custom paged-attention kernels. CUDA thread hierarchy, shared memory, coalesced access, tiling. The NVIDIA/Meta-infra depth signal.\nCode: Triton fused softmax that matches F.softmax to 1e-5 (or numpy pseudocode + tile-size reasoning). Optional: tiled matmul.\nDeliverable: fused_softmax.py + tiling note"
   },
   {
-    "id": "inference-design-an-inference-stack-1000-qps-system-design-059",
+    "id": "inference-design-an-inference-stack-1000-qps-system-design-004",
     "type": "concept",
     "stage": "I12",
     "category": "inference",
@@ -1032,7 +1032,7 @@
     "_source": "Theory: The full mock: design LLM serving for a target QPS/SLO. Cover model+quant choice, GPU sizing (TP/PP), PagedAttention + continuous batching, prefix caching, autoscaling + cache-aware routing, disaggregation if needed, monitoring, cost. Practice the 35-min whiteboard answer end to end.\nMath: Full capacity + cost calculation for the chosen scenario, defending every number.\nCode: — (whiteboard the full stack from request to token; time it to 35 min)\nDeliverable: Inference system-design writeup"
   },
   {
-    "id": "inference-build-an-inference-benchmark-harness-060",
+    "id": "inference-build-an-inference-benchmark-harness-005",
     "type": "concept",
     "stage": "I12",
     "category": "inference",
@@ -1040,7 +1040,7 @@
     "_source": "Theory: Measure what you've been estimating: send controlled load, record TTFT/TPOT/E2E percentiles, throughput, goodput vs concurrency. Compare batch sizes / quantization / engines. Turns theory into evidence you can cite in interviews.\nMath: Validate your TTFT/TPOT/capacity models against measured numbers within 10-20%.\nCode: Benchmark script: ramp concurrency against a real engine (or your mini engine), plot throughput vs latency and find the knee.\nDeliverable: benchmark.py + latency-throughput curve"
   },
   {
-    "id": "inference-inference-formulas-key-numbers-from-memory-061",
+    "id": "inference-inference-formulas-key-numbers-from-memory-006",
     "type": "concept",
     "stage": "I12",
     "category": "inference",
@@ -1048,95 +1048,95 @@
     "_source": "Theory: Re-write every core inference formula cold: roofline/ridge, arithmetic intensity, KV-cache bytes, TTFT, TPOT, FlashAttention IO, PagedAttention waste, GQA reduction, spec-decoding speedup, cost/token. Plus key hardware numbers (A100/H100 FLOPS + BW). The pre-interview cheat sheet.\nMath: Reproduce all formulas + the A100/H100 numbers from memory; redo monthly.\nDeliverable: Inference cheat sheet recreated"
   },
   {
-    "id": "peft-the-full-post-training-pipeline-006",
+    "id": "post-training-the-full-post-training-pipeline-001",
     "type": "concept",
     "stage": "F0",
-    "category": "peft",
+    "category": "post-training",
     "topic": "The full post-training pipeline",
     "_source": "Theory: The canonical modern recipe: pretrain (next-token) → SFT (instruction following) → preference optimization (RLHF/PPO or DPO) → optional iterative rounds. What each stage buys: SFT teaches format/behavior, preference tuning teaches ranking/values. Base vs instruct vs chat models. Where your voice-bot SFT+DPO pipeline sits.\nCode: — (draw the pretrain→SFT→preference→eval pipeline; annotate what data + loss each stage uses)\nDeliverable: Pipeline diagram + 60s explainer"
   },
   {
-    "id": "peft-when-to-fine-tune-vs-rag-vs-prompt-vs-pretrain-007",
+    "id": "post-training-when-to-fine-tune-vs-rag-vs-prompt-vs-pretrain-002",
     "type": "concept",
     "stage": "F0",
-    "category": "peft",
+    "category": "post-training",
     "topic": "When to fine-tune vs RAG vs prompt vs pretrain",
     "_source": "Theory: Decision framework: prompt engineering (fast, no data) → RAG (inject knowledge, reduce hallucination) → fine-tune (change behavior/format/style, distill) → continued pretrain (new domain/language). Cost, latency, data, and maintenance tradeoffs. Fine-tuning teaches BEHAVIOR, not FACTS — the key interview line.\nCode: — (build the decision table + a crisp 90s 'when would you fine-tune vs RAG vs prompt' answer)\nDeliverable: Decision framework rehearsed"
   },
   {
-    "id": "peft-full-fine-tune-vs-peft-the-framework-008",
+    "id": "post-training-full-fine-tune-vs-peft-the-framework-003",
     "type": "concept",
     "stage": "F0",
-    "category": "peft",
+    "category": "post-training",
     "topic": "Full fine-tune vs PEFT — the framework",
     "_source": "Theory: Full FT (update all params) vs PEFT (LoRA/adapters, update <1%). Compute, memory, catastrophic forgetting, multi-task/multi-adapter serving, generalization. When full FT is actually worth it (large domain shift, you own the base). Why PEFT dominates in practice.\nMath: Contrast trainable params + optimizer memory: full FT 7B = 16P bytes ≈ 112GB; LoRA r=16 ≈ 0.6% trainable, adapter optimizer state tiny.\nCode: — (comparison table: full FT vs LoRA vs QLoRA across compute/memory/quality/serving)\nDeliverable: Full-FT-vs-PEFT table"
   },
   {
-    "id": "peft-sft-data-format-chat-templates-009",
+    "id": "ft-data-sft-data-format-chat-templates-001",
     "type": "concept",
     "stage": "F1",
-    "category": "peft",
+    "category": "ft-data",
     "topic": "SFT data format & chat templates",
     "_source": "Theory: Instruction/response format. Chat templates (system/user/assistant roles, special tokens like <|im_start|>). Why the template MUST match training and inference exactly (mismatch = silent quality loss — your Gemma chat-template fix). Multi-turn formatting. Tool-call formatting.\nCode: Implement a chat-template tokenizer: render a multi-turn conversation into token ids with correct role markers; verify round-trip decode.\nDeliverable: chat_template.py + round-trip test"
   },
   {
-    "id": "peft-loss-masking-the-1-sft-bug-010",
+    "id": "ft-data-loss-masking-the-1-sft-bug-002",
     "type": "concept",
     "stage": "F1",
-    "category": "peft",
+    "category": "ft-data",
     "topic": "Loss masking (the #1 SFT bug)",
     "_source": "Theory: Only ASSISTANT tokens contribute to loss; prompt/user/system tokens get label = -100 (ignored). Why: you don't want the model learning to generate the user's turns. What happens if you don't mask (model degrades, learns to echo prompts). Completion-only vs full-sequence loss.\nMath: Show the loss is L = -(1/N_assistant) Σ over assistant tokens only. Demonstrate why including prompt tokens biases the gradient.\nCode: Build labels with -100 masking for a multi-turn sample; verify only assistant tokens have non-ignored labels and contribute to CE.\nDeliverable: loss_mask.py + verification"
   },
   {
-    "id": "peft-data-quality-quantity-curation-lima-quality-quantity-011",
+    "id": "ft-data-data-quality-quantity-curation-lima-quality-quantity-003",
     "type": "concept",
     "stage": "F1",
-    "category": "peft",
+    "category": "ft-data",
     "topic": "Data quality, quantity & curation (LIMA, quality>quantity)",
     "_source": "Theory: LIMA: 1k high-quality examples beat 50k noisy ones — 'less is more for alignment'. Diversity, deduplication, difficulty balance. Synthetic data (Self-Instruct, Evol-Instruct, distillation from a stronger model). Data contamination / eval leakage. How much data SFT actually needs.\nCode: — (write a data-quality checklist + a dedup/near-dup detection sketch)\nDeliverable: Data curation notes + checklist"
   },
   {
-    "id": "peft-preference-data-chosen-rejected-pairs-012",
+    "id": "ft-data-preference-data-chosen-rejected-pairs-004",
     "type": "concept",
     "stage": "F1",
-    "category": "peft",
+    "category": "ft-data",
     "topic": "Preference data (chosen/rejected pairs)",
     "_source": "Theory: Format for RLHF/DPO: (prompt, chosen, rejected). How pairs are collected: human ranking, AI feedback (RLAIF), model-vs-model, best-of-n. Inter-annotator agreement. Noise and its effect. On-policy vs off-policy preference data. Why pair quality caps preference-tuning quality.\nCode: — (design a preference-collection scheme for your voice bot; note agreement + noise handling)\nDeliverable: Preference-data design notes"
   },
   {
-    "id": "peft-packing-padding-truncation-masking-mechanics-013",
+    "id": "ft-data-packing-padding-truncation-masking-mechanics-005",
     "type": "concept",
     "stage": "F1",
-    "category": "peft",
+    "category": "ft-data",
     "topic": "Packing, padding, truncation & masking mechanics",
     "_source": "Theory: Sequence packing (concatenate short samples to fill context, with attention resets so samples don't attend across boundaries) vs padding. Truncation strategy (keep the response). Attention masks. Throughput impact of packing. Position-id resets.\nMath: Show packing efficiency gain = 1 - (padded_tokens/total). Compute for a batch with high length variance.\nCode: Implement sequence packing with a block-diagonal attention mask + position-id reset; verify samples don't attend across boundaries.\nDeliverable: packing.py + mask test"
   },
   {
-    "id": "peft-sft-objective-the-training-loop-014",
+    "id": "sft-sft-objective-the-training-loop-001",
     "type": "concept",
     "stage": "F2",
-    "category": "peft",
+    "category": "sft",
     "topic": "SFT objective & the training loop",
     "_source": "Theory: SFT = causal LM cross-entropy on (masked) assistant tokens. The full loop: forward → CE on assistant tokens → backward → optimizer step. Teacher forcing. Why SFT alone can't exceed the quality of its demonstrations (imitation ceiling) → motivates preference tuning.\nMath: Write L_SFT = -Σ_t m_t · log π_θ(y_t | y_<t, x), m_t = assistant mask. Relate to MLE.\nCode: Full SFT loop on a tiny model: masked CE, AdamW, cosine LR + warmup, grad clip; log loss. Verify loss decreases and only assistant tokens train.\nDeliverable: sft_train.py + loss curve"
   },
   {
-    "id": "peft-hyperparameters-that-matter-lr-epochs-warmup-015",
+    "id": "sft-hyperparameters-that-matter-lr-epochs-warmup-002",
     "type": "concept",
     "stage": "F2",
-    "category": "peft",
+    "category": "sft",
     "topic": "Hyperparameters that matter (LR, epochs, warmup)",
     "_source": "Theory: Learning rate (SFT typically 1e-5 to 2e-5 full, higher for LoRA), 1-3 epochs (more → overfit/forget), warmup ratio, cosine vs linear decay, batch size + grad accumulation, weight decay, NEFTune noise. How to tell you're overfitting (train loss ↓ but eval/behavior ↓).\nMath: Effective batch = micro_batch × grad_accum × n_gpu. Compute the accum steps to hit a target effective batch on limited memory.\nCode: Add gradient accumulation to your SFT loop; verify effective batch matches the non-accumulated run's gradients.\nDeliverable: grad_accum.py + hp notes"
   },
   {
-    "id": "peft-catastrophic-forgetting-mitigation-016",
+    "id": "sft-catastrophic-forgetting-mitigation-003",
     "type": "concept",
     "stage": "F2",
-    "category": "peft",
+    "category": "sft",
     "topic": "Catastrophic forgetting & mitigation",
     "_source": "Theory: Fine-tuning erodes pretrained capabilities. Mitigations: lower LR, fewer epochs, LoRA (freezes base), replay/mixing pretrain data, KL/regularization to base, model averaging (model soup / WiSE-FT). How to measure forgetting (eval on general benchmarks before/after).\nMath: Show LoRA limits forgetting because base weights are frozen; contrast with full FT weight drift ‖θ_ft - θ_base‖.\nCode: — (measure a general-capability proxy before/after a fine-tune; note the drop)\nDeliverable: Forgetting notes + measurement"
   },
   {
-    "id": "peft-lora-math-w-ba-r-scaling-w-0-init-017",
+    "id": "peft-lora-math-w-ba-r-scaling-w-0-init-006",
     "type": "concept",
     "stage": "F3",
     "category": "peft",
@@ -1144,7 +1144,7 @@
     "_source": "Theory: ΔW = BA, B∈R^{d×r}, A∈R^{r×k}, r ≪ d. Forward: h = W₀x + (α/r)·BAx. Init A~N(0,σ²), B=0 so ΔW=0 at start (training begins from the pretrained model). α/r scaling decouples LR from rank. Low intrinsic-rank hypothesis. Which modules to target (q,k,v,o + MLP).\nMath: Show BA=0 at init and becomes nonzero after one gradient step. LoRA params = r·(d_in+d_out). For 7B all-linear r=16 ≈ 0.6% trainable. Show α/r scaling effect on update magnitude.\nCode: LoRALinear: freeze base, add A,B with α/r scaling; merge_weights() folds ΔW into W₀. Apply to attention+FFN; verify <2% trainable, only adapters in optimizer.\nDeliverable: lora.py + merge fn"
   },
   {
-    "id": "peft-qlora-nf4-double-quant-paged-optimizers-018",
+    "id": "peft-qlora-nf4-double-quant-paged-optimizers-007",
     "type": "concept",
     "stage": "F3",
     "category": "peft",
@@ -1152,7 +1152,7 @@
     "_source": "Theory: Quantize frozen base to 4-bit NF4 (info-optimal for ~N(0,1) weights), keep LoRA adapters in bf16. Double quantization (quantize the quant constants → ~0.4 bits/param saved). Paged optimizers (page 8-bit AdamW state to CPU on spikes). Preserves full-FT quality at a fraction of memory. Your H100 27B story.\nMath: Memory: 7B in NF4 ≈ 3.5GB base + r=16 LoRA + paged 8-bit AdamW vs 112GB full bf16 FT. Show adapters <0.5%.\nCode: Wrap the base with NF4 fake-quant (dequant on forward), bf16 LoRA on top; verify forward ≈ bf16 within tolerance; only adapters train.\nDeliverable: qlora.py + memory table"
   },
   {
-    "id": "peft-lora-variants-dora-rslora-vera-lora-pissa-019",
+    "id": "peft-lora-variants-dora-rslora-vera-lora-pissa-008",
     "type": "concept",
     "stage": "F3",
     "category": "peft",
@@ -1160,7 +1160,7 @@
     "_source": "Theory: DoRA (decompose into magnitude + direction, closer to full FT). rsLoRA (rank-stabilized scaling α/√r). LoRA+ (different LRs for A and B). VeRA (shared frozen random A,B + tiny trained vectors). PiSSA (init from principal singular components). When each helps and the quality/param tradeoffs.\nMath: Compare the scaling factor: LoRA α/r vs rsLoRA α/√r; show why √r stabilizes higher ranks.\nCode: — (variants comparison table: idea, extra params, when to use)\nDeliverable: LoRA-variants table"
   },
   {
-    "id": "peft-other-peft-adapters-prefix-prompt-tuning-ia-bitfit-020",
+    "id": "peft-other-peft-adapters-prefix-prompt-tuning-ia-bitfit-009",
     "type": "concept",
     "stage": "F3",
     "category": "peft",
@@ -1168,7 +1168,7 @@
     "_source": "Theory: Bottleneck adapters (Houlsby), prefix tuning (trainable virtual tokens in KV), prompt tuning (soft prompts at input), P-tuning v2, (IA)³ (learned scaling vectors), BitFit (train only biases). How they differ from LoRA (inference overhead, expressiveness). Why LoRA won (mergeable, no inference cost).\nCode: — (PEFT taxonomy: where each injects params + inference-time cost)\nDeliverable: PEFT taxonomy notes"
   },
   {
-    "id": "peft-serving-many-adapters-multi-lora-s-lora-021",
+    "id": "peft-serving-many-adapters-multi-lora-s-lora-010",
     "type": "concept",
     "stage": "F3",
     "category": "peft",
@@ -1176,290 +1176,290 @@
     "_source": "Theory: One base model + N task adapters swapped per request. S-LoRA: unified paging for adapter weights, heterogeneous batching across adapters. Beats loading N full models. Adapter hot-swap, routing per tenant. Ties inference + fine-tuning together.\nMath: Memory: N full 7B (N×14GB) vs 1 base + N adapters (14GB + N×~40MB). Show the multi-tenant win.\nCode: — (multi-adapter batching sketch: route requests to adapters, batch on shared base)\nDeliverable: Multi-LoRA serving notes"
   },
   {
-    "id": "peft-bradley-terry-reward-model-022",
+    "id": "reward-modeling-bradley-terry-reward-model-001",
     "type": "concept",
     "stage": "F4",
-    "category": "peft",
+    "category": "reward-modeling",
     "topic": "Bradley-Terry reward model",
     "_source": "Theory: Train a scalar reward r(x,y) from preference pairs so chosen > rejected. Architecture: base LM + a scalar head on the last token. The RM is the learned proxy for human values that PPO optimizes against. Data format, training, and why the RM is the bottleneck of RLHF.\nMath: Derive BT loss = -log σ(r(x,y_w) - r(x,y_l)). Show it decreases as the reward gap grows. Relate to logistic regression on pairs.\nCode: rm_loss(r_chosen, r_rejected) + a scalar-head model; verify loss decreases on synthetic pairs where chosen truly better.\nDeliverable: rm.py + loss curve"
   },
   {
-    "id": "peft-reward-hacking-over-optimization-goodhart-023",
+    "id": "reward-modeling-reward-hacking-over-optimization-goodhart-002",
     "type": "concept",
     "stage": "F4",
-    "category": "peft",
+    "category": "reward-modeling",
     "topic": "Reward hacking, over-optimization & Goodhart",
     "_source": "Theory: Optimizing a proxy reward eventually diverges from true quality (Goodhart). Reward over-optimization: KL from ref rises, reward ↑ but human quality ↓ (the classic hump). Length bias, sycophancy, formatting exploits. Why the KL penalty and RM ensembles/uncertainty exist.\nMath: Sketch the reward-vs-KL over-optimization curve; explain why gold reward peaks then falls as proxy reward keeps rising.\nCode: — (3 concrete reward-hacking examples + mitigations for your voice bot)\nDeliverable: Reward-hacking writeup"
   },
   {
-    "id": "peft-rm-variants-outcome-vs-process-pairwise-vs-pointwise-024",
+    "id": "reward-modeling-rm-variants-outcome-vs-process-pairwise-vs-pointwise-003",
     "type": "concept",
     "stage": "F4",
-    "category": "peft",
+    "category": "reward-modeling",
     "topic": "RM variants: outcome vs process, pairwise vs pointwise",
     "_source": "Theory: Outcome RM (score final answer) vs Process RM / PRM (score each reasoning step — big for math/reasoning, o1-style). Pairwise (BT) vs pointwise (regression) vs listwise. Absolute-score RMs. LLM-as-judge as an implicit RM. Where process rewards changed reasoning training.\nCode: — (table: RM types, label needs, where each wins; note PRM for reasoning)\nDeliverable: RM variants notes"
   },
   {
-    "id": "peft-rlhf-objective-kl-penalty-the-core-equation-025",
+    "id": "rlhf-rlhf-objective-kl-penalty-the-core-equation-001",
     "type": "concept",
     "stage": "F5",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "RLHF objective + KL penalty (the core equation)",
     "_source": "Theory: max_π E_{x,y~π}[r(x,y)] - β·KL(π_θ || π_ref). Reward from the RM minus a per-token KL penalty keeping the policy near the SFT reference (prevents reward hacking + preserves fluency). β controls the tradeoff (β→0 free rein, β→∞ frozen). The equation every alignment interview wants.\nMath: Derive the optimal policy π*(y|x) ∝ π_ref(y|x)·exp(r(x,y)/β) from the KL-regularized objective (this is also the seed of the DPO derivation).\nCode: — (paper derivation of π* + explain the role of β with two limits)\nDeliverable: RLHF objective derivation"
   },
   {
-    "id": "peft-ppo-actors-critics-and-the-four-models-026",
+    "id": "rlhf-ppo-actors-critics-and-the-four-models-002",
     "type": "concept",
     "stage": "F5",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "PPO — actors, critics, and the four models",
     "_source": "Theory: The RLHF PPO setup runs FOUR models: policy (actor, trained), value model (critic, trained), reward model (frozen), reference (frozen, for KL). Rollout → score → advantage → update. Why this is memory-heavy and finicky. The full data flow.\nMath: Reward signal per token: R_t = r_RM at final token - β·KL(π_θ||π_ref) per token. Show where the value head's baseline reduces variance.\nCode: — (draw the PPO-RLHF loop: rollout, reward+KL, GAE, clipped update; label all 4 models)\nDeliverable: PPO-RLHF flow diagram"
   },
   {
-    "id": "peft-ppo-clipped-surrogate-objective-gae-027",
+    "id": "rlhf-ppo-clipped-surrogate-objective-gae-003",
     "type": "concept",
     "stage": "F5",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "PPO — clipped surrogate objective + GAE",
     "_source": "Theory: Clipped surrogate stops destructive large policy updates. GAE trades bias/variance in advantage estimation. Ratio r_t = π_θ/π_old. Epochs over each rollout batch. Value-function clipping, entropy bonus. Why clipping (vs a trust region / KL constraint).\nMath: L^CLIP = E[min(r_t·A_t, clip(r_t,1-ε,1+ε)·A_t)]. GAE: A_t = Σ_l (γλ)^l δ_{t+l}, δ_t = R_t + γV(s_{t+1}) - V(s_t). Show clipping bounds the update.\nCode: ppo_clip_loss(logp_new, logp_old, adv, eps) + gae(rewards, values, gamma, lam); verify clipping activates when ratio leaves [1-ε,1+ε].\nDeliverable: ppo.py + GAE test"
   },
   {
-    "id": "peft-rlhf-failure-modes-stability-tricks-028",
+    "id": "rlhf-rlhf-failure-modes-stability-tricks-004",
     "type": "concept",
     "stage": "F5",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "RLHF failure modes & stability tricks",
     "_source": "Theory: Instability sources: RM drift, KL collapse/explosion, reward hacking, value-model init, mode collapse (low diversity), length bias. Tricks: adaptive KL controller, reward whitening/normalization, advantage normalization, careful LR, warmup, clip range. Why RLHF is hard to reproduce.\nMath: Adaptive KL controller: β_{t+1} = β_t·(1 + K_β·(KL_actual/KL_target - 1)); show it targets a KL budget.\nCode: — (implement reward whitening + advantage normalization; note the stability effect)\nDeliverable: RLHF stability notes"
   },
   {
-    "id": "peft-critic-free-rl-basics-reinforce-rloo-remax-029",
+    "id": "rlhf-critic-free-rl-basics-reinforce-rloo-remax-005",
     "type": "concept",
     "stage": "F5",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "Critic-free RL basics: REINFORCE, RLOO, ReMax",
     "_source": "Theory: Simpler-than-PPO methods that drop the value model. REINFORCE + baseline (high variance). RLOO (leave-one-out baseline from k samples — no critic). ReMax (greedy-baseline). These set up the GRPO family (next section), which generalizes the 'baseline from a group of samples' idea. Why removing the critic saves memory + tuning.\nMath: RLOO baseline = mean of the other k−1 rewards: A_{k}=r_k − (1/(k−1))Σ_{i≠k} r_i. Show it is an unbiased, critic-free advantage.\nCode: Implement GRPO group-relative advantages for k completions of one prompt; verify zero-mean per group.\nDeliverable: grpo.py + advantage test"
   },
   {
-    "id": "peft-grpo-deep-dive-group-relative-critic-free-030",
+    "id": "rlhf-grpo-deep-dive-group-relative-critic-free-006",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "GRPO — deep dive (group-relative, critic-free)",
     "_source": "Theory: DeepSeek's GRPO (DeepSeekMath → DeepSeek-R1) — the method that powered the reasoning-RL wave. Drops PPO's value model entirely: for each prompt sample a GROUP of K completions (8-64), use the group's mean reward as the baseline → advantage = z-scored reward within the group, shared across all tokens of a response. Halves memory, removes the noisy critic. Per-token importance ratio + PPO-style clip + KL to ref. Pairs naturally with verifiable rewards (RLVR).\nMath: Â_k = (r_k − mean(r_group))/std(r_group), same for every token of response k. J = E[(1/K)Σ_k (1/|o_k|)Σ_t min(ρ_{k,t}Â_k, clip(ρ_{k,t},1±ε)Â_k) − β·KL(π_θ‖π_ref)], ρ_{k,t}=π_θ/π_old. Show no V(s) is needed and advantages are zero-mean per group.\nCode: Implement GRPO: sample K completions, compute group-normalized advantages, per-token clipped surrogate + KL. Verify advantages zero-mean per group; confirm no critic model exists.\nDeliverable: grpo.py + advantage test"
   },
   {
-    "id": "peft-dr-grpo-removing-grpo-s-biases-031",
+    "id": "rlhf-dr-grpo-removing-grpo-s-biases-007",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "Dr. GRPO — removing GRPO's biases",
     "_source": "Theory: 'GRPO Done Right' (Understanding R1-Zero-Like Training). GRPO's normalizers inject biases: (1) dividing by response length |o_k| makes the model prefer LONGER wrong answers and SHORTER right ones → the reward-independent response-length inflation seen in R1-Zero; (2) dividing by group std over-weights easy vs hard questions (difficulty bias); (3) 1/K vs 1/(K−1) baseline scaling. Dr. GRPO drops the length + std normalization → unbiased optimization, kills the length-inflation artifact.\nMath: GRPO divides by |o_k| and std[r]. Dr. GRPO: A_k = r_k − mean(r_group) (NO /std, NO /|o_k|). Show why /|o_k| incentivizes length and /std distorts per-question gradients; the 1/(K−1) fix is absorbed into the LR.\nCode: Modify your GRPO → Dr. GRPO (remove length + std normalization). Show the response-length-inflation artifact disappears on a toy run.\nDeliverable: dr_grpo.py + bias note"
   },
   {
-    "id": "peft-dapo-grpo-at-scale-the-4-tricks-032",
+    "id": "rlhf-dapo-grpo-at-scale-the-4-tricks-008",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "DAPO — GRPO at scale (the 4 tricks)",
     "_source": "Theory: ByteDance/Tsinghua 2025, fully open — 'GRPO with the lessons from running it at scale'; trained Qwen2.5-32B to AIME-50 with ~50% fewer steps than R1-Zero. Four tricks: (1) CLIP-HIGHER — decouple and raise the UPPER clip bound so low-prob tokens still update → prevents entropy collapse, preserves exploration; (2) DYNAMIC SAMPLING — drop prompts whose K rollouts are all-correct or all-wrong (zero advantage = zero gradient) and resample → informative batches only; (3) TOKEN-LEVEL policy-gradient loss (sum over all tokens, not mean-per-sequence) so long CoT avoids vanishing gradients; (4) OVERLONG REWARD SHAPING — soft length penalty to denoise truncated responses.\nMath: Asymmetric clip: min(ρÂ, clip(ρ, 1−ε_low, 1+ε_high)Â) with ε_high>ε_low. Token-level loss = (1/Σ_k|o_k|)Σ_k Σ_t (...) vs GRPO's (1/K)Σ_k(1/|o_k|)Σ_t. Explain each trick's failure mode fixed.\nCode: Extend GRPO with clip-higher (asymmetric ε) + dynamic-sampling filter (drop all-same-reward groups) + token-level normalization. Verify all-correct/all-wrong groups are filtered out.\nDeliverable: dapo.py + 4-tricks note"
   },
   {
-    "id": "peft-gspo-sequence-level-optimization-qwen-033",
+    "id": "rlhf-gspo-sequence-level-optimization-qwen-009",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "GSPO — sequence-level optimization (Qwen)",
     "_source": "Theory: Qwen Team/Alibaba (Qwen3). GRPO's per-TOKEN importance ratio is high-variance and mismatched — the advantage is sequence-level but the ratio is token-level — causing instability, worst for MoE and long sequences. GSPO uses a SEQUENCE-level importance ratio (length-normalized geometric mean of token likelihoods) and clips/weights the whole response → much more stable RL, better MoE training, cleaner scaling. The macro trend: token-level (GRPO) → sequence-level (GSPO).\nMath: Sequence ratio s_k = (π_θ(o_k|q)/π_old(o_k|q))^{1/|o_k|} (length-normalized geometric mean). Objective clips at sequence level: min(s_k Â_k, clip(s_k,1±ε)Â_k). Contrast variance with GRPO's per-token ρ_{k,t}.\nCode: Implement GSPO's sequence-level ratio + clipped objective; compare gradient variance to token-level GRPO on identical rollouts.\nDeliverable: gspo.py + variance comparison"
   },
   {
-    "id": "peft-cispo-reinforce-kl-cov-clip-cov-034",
+    "id": "rlhf-cispo-reinforce-kl-cov-clip-cov-010",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "CISPO, REINFORCE++, KL-Cov / Clip-Cov",
     "_source": "Theory: The 'how exactly do we clip/weight' refinements around GRPO. CISPO (MiniMax M1): clip the IMPORTANCE-SAMPLING weight instead of masking token updates → keeps every token's gradient, faster convergence than GRPO. REINFORCE++ (global-batch baseline + PPO-style stabilizers, no groups). KL-Cov / Clip-Cov: covariance-based clipping to control entropy/exploration. Know these as the variant space, not necessarily to implement each.\nMath: CISPO: apply clip to the IS weight ρ but RETAIN its gradient (no min-of-two masking that zeroes tokens). REINFORCE++ baseline = global batch-mean reward.\nCode: — (comparison table: what each clips/weights vs GRPO; token vs weight vs sequence)\nDeliverable: Clipping-variants table"
   },
   {
-    "id": "peft-prime-process-rewards-via-implicit-rm-035",
+    "id": "rlhf-prime-process-rewards-via-implicit-rm-011",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "PRIME — process rewards via implicit RM",
     "_source": "Theory: PRIME-RL: online RL with PROCESS (per-step) rewards WITHOUT training a separately step-labeled PRM. Derive an implicit token-level process reward from an OUTCOME-trained reward model (implicit PRM) and update it online → dense credit assignment for reasoning while avoiding the cost + label-noise of an explicit PRM. Plugs into GRPO-style policy optimization. Part of the 'dense reward for reasoning' push.\nMath: Implicit process reward at token t ∝ β·log(π_RM/π_ref) — a dense per-token signal vs sparse outcome-only reward. Show denser credit assignment reduces variance on long CoT.\nCode: — (design an implicit-PRM reward: token-level from an outcome RM; feed as dense reward into GRPO)\nDeliverable: PRIME design notes"
   },
   {
-    "id": "peft-vapo-gfpo-how-to-decode-any-new-po-036",
+    "id": "rlhf-vapo-gfpo-how-to-decode-any-new-po-012",
     "type": "concept",
     "stage": "F5B",
-    "category": "peft",
+    "category": "rlhf",
     "topic": "VAPO, GFPO & how to decode any new *PO",
     "_source": "Theory: VAPO — value-AUGMENTED PO: brings a well-tuned value model back for reliable long-CoT RL, competitive with critic-free methods (the pendulum swinging partway back). GFPO — Group-Filtered PO (filter which group samples contribute). New '*PO' variants land constantly. Frameworks (verl, TRL) support PPO/GRPO/GSPO/DAPO/Dr.GRPO/ReMax/REINFORCE++/RLOO/PRIME out of the box — so the skill is DECODING a new method fast, not memorizing all.\nCode: — (decode-any-new-method checklist: baseline/advantage? clip token vs seq vs weight? critic or not? outcome vs process reward? on/off-policy?)\nDeliverable: Method-decoder checklist"
   },
   {
-    "id": "peft-dpo-full-derivation-rlhf-closed-form-037",
+    "id": "dpo-dpo-full-derivation-rlhf-closed-form-001",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "DPO — full derivation (RLHF → closed form)",
     "_source": "Theory: The key result: the KL-constrained RLHF optimum can be solved WITHOUT RL. Start from π* ∝ π_ref·exp(r/β), invert to express r in terms of π*, substitute into the Bradley-Terry loss → a simple classification loss on preference pairs. No RM, no rollouts, no value model. Why it's stable and cheap. When it underperforms PPO (off-policy, distribution shift).\nMath: Do the FULL derivation cold, twice: (1) RLHF max → π*(y|x)=π_ref·exp(r/β)/Z, (2) solve r(x,y)=β·log(π*/π_ref)+β·log Z, (3) sub into BT loss → Z cancels → DPO loss.\nCode: — (write the complete derivation on paper; the Z-cancellation is the crux)\nDeliverable: Full DPO derivation (cold ×2)"
   },
   {
-    "id": "peft-dpo-loss-implicit-reward-code-038",
+    "id": "dpo-dpo-loss-implicit-reward-code-002",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "DPO — loss, implicit reward & code",
     "_source": "Theory: Implicit reward r(x,y) = β·log(π_θ(y|x)/π_ref(y|x)). Loss pushes chosen's implicit reward above rejected's. Reference model (frozen) computes ref logps. Typical β=0.1-0.5. The gradient up-weights rejected-when-wrong. What each term does. Your voice-bot DPO pipeline.\nMath: L_DPO = -E[log σ(β(log π_θ(y_w|x)/π_ref(y_w|x) - log π_θ(y_l|x)/π_ref(y_l|x)))]. Show ∂L/∂θ scales by the reward-estimate error. Show loss decreases as chosen-rejected gap grows.\nCode: dpo_loss(policy_chosen_logps, policy_rejected_logps, ref_chosen_logps, ref_rejected_logps, beta); verify decreases as gap grows; verify =−log σ(0) at init when policy=ref.\nDeliverable: dpo_loss.py + verify"
   },
   {
-    "id": "peft-dpo-failure-modes-practical-gotchas-039",
+    "id": "dpo-dpo-failure-modes-practical-gotchas-003",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "DPO failure modes & practical gotchas",
     "_source": "Theory: Likelihood of BOTH chosen and rejected can drop (DPO reduces rejected faster than it raises chosen). Sensitivity to β and to reference model. Off-policy data mismatch. Overfitting on easy pairs. Length exploitation. Needs SFT first (DPO on a base model is unstable). Loss-masking + logp computation bugs (your real debugging story).\nMath: Show why margin can grow while both logps fall (only the DIFFERENCE is constrained). Contrast with methods that anchor absolute logp.\nCode: — (add a diagnostic logging chosen/rejected logps + margin over training; spot the both-fall pattern)\nDeliverable: DPO diagnostics + gotchas"
   },
   {
-    "id": "peft-dpo-variants-ipo-cdpo-kto-orpo-simpo-r-dpo-040",
+    "id": "dpo-dpo-variants-ipo-cdpo-kto-orpo-simpo-r-dpo-004",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "DPO variants: IPO, cDPO, KTO, ORPO, SimPO, R-DPO",
     "_source": "Theory: IPO (fixes DPO overfitting, drops the BT assumption). cDPO (label smoothing for noisy prefs). KTO (uses unpaired good/bad labels — no pairs needed, prospect-theory loss). ORPO (SFT + odds-ratio preference in ONE stage, no ref model). SimPO (reference-free, length-normalized reward). R-DPO (length regularized). When each wins.\nMath: SimPO reward = (β/|y|)·log π_θ(y|x) (length-normalized, no ref) + a target margin γ. ORPO adds λ·log-odds-ratio penalty to the SFT loss. Contrast ref-free vs ref-based.\nCode: Implement SimPO loss (length-normalized, reference-free, margin γ); compare its gradient to DPO on the same pair.\nDeliverable: simpo.py + variants table"
   },
   {
-    "id": "peft-dpo-vs-ppo-vs-orpo-vs-kto-the-comparison-041",
+    "id": "dpo-dpo-vs-ppo-vs-orpo-vs-kto-the-comparison-005",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "DPO vs PPO vs ORPO vs KTO — the comparison",
     "_source": "Theory: The interview table: needs_reward_model? needs_reference? needs_paired_data? on/off-policy? compute? stability? typical quality. When PPO's on-policy exploration still wins (frontier labs), when DPO is the pragmatic default, when ORPO/KTO fit your data. A crisp 60s answer per method.\nCode: — (fill the full comparison matrix + rehearse a 60s answer for each of the 4)\nDeliverable: Comparison matrix + answers"
   },
   {
-    "id": "peft-self-play-game-theoretic-preference-spin-sppo-nash-bond-042",
+    "id": "dpo-self-play-game-theoretic-preference-spin-sppo-nash-bond-006",
     "type": "concept",
     "stage": "F6",
-    "category": "peft",
+    "category": "dpo",
     "topic": "Self-play & game-theoretic preference (SPIN, SPPO, Nash, BOND)",
     "_source": "Theory: Beyond pairwise DPO. SPIN (self-play FT: the model's own generations are negatives vs human positives, iterate — no preference labels needed). SPPO (self-play preference optimization toward a Nash equilibrium). Nash-MD / NLHF (frame RLHF as a two-player game → Nash policy; handles intransitive/non-BT preferences). BOND (Best-of-N Distillation: get best-of-N quality without N× inference by distilling the BoN policy). When these beat vanilla DPO.\nMath: SPPO pushes toward the Nash equilibrium of the preference game (drops BT's transitivity assumption). BOND matches the best-of-N distribution via distribution matching (e.g. Jeffreys divergence).\nCode: — (SPIN iteration sketch: current model's samples = negatives, human answers = positives, SFT-style loop)\nDeliverable: Self-play methods notes"
   },
   {
-    "id": "peft-rlaif-constitutional-ai-anthropic-043",
+    "id": "alignment-rlaif-constitutional-ai-anthropic-011",
     "type": "concept",
     "stage": "F7",
-    "category": "peft",
+    "category": "alignment",
     "topic": "RLAIF & Constitutional AI (Anthropic)",
     "_source": "Theory: Replace human preference labels with AI feedback. Constitutional AI: (1) SFT stage — model critiques + revises its own responses against a set of principles (the 'constitution'); (2) RL stage — a preference model trained on AI-labeled comparisons (RLAIF). Harmlessness without heavy human labeling. Core Anthropic interview topic.\nCode: — (write the CAI two-phase loop + a 3-min 'explain Constitutional AI' answer; list 3 constitution principles)\nDeliverable: CAI explainer + notes"
   },
   {
-    "id": "peft-rlvr-reasoning-rl-verifiable-rewards-o1-r1-style-044",
+    "id": "alignment-rlvr-reasoning-rl-verifiable-rewards-o1-r1-style-012",
     "type": "concept",
     "stage": "F7",
-    "category": "peft",
+    "category": "alignment",
     "topic": "RLVR & reasoning RL (verifiable rewards, o1/R1-style)",
     "_source": "Theory: RL from Verifiable Rewards: for math/code, the reward is a checker (unit tests, exact-match), not an RM → no reward hacking of a learned proxy. GRPO on verifiable rewards (DeepSeek-R1). Emergent long chain-of-thought. Outcome vs process reward for reasoning. The 2024-25 paradigm shift.\nMath: Show verifiable reward r∈{0,1} removes RM over-optimization; combine with GRPO group-relative advantage over k sampled solutions.\nCode: — (design an RLVR loop for a math task: sample k solutions, verify, GRPO update)\nDeliverable: RLVR design notes"
   },
   {
-    "id": "peft-iterative-online-preference-tuning-045",
+    "id": "alignment-iterative-online-preference-tuning-013",
     "type": "concept",
     "stage": "F7",
-    "category": "peft",
+    "category": "alignment",
     "topic": "Iterative & online preference tuning",
     "_source": "Theory: Offline DPO uses a fixed dataset; online/iterative methods regenerate preferences from the CURRENT policy each round (on-policy) → closes the distribution-shift gap that hurts vanilla DPO. Iterative DPO, online DPO, self-rewarding LMs, rejection-sampling fine-tuning (RFT / best-of-n → SFT). Why on-policy data matters.\nMath: Explain why on-policy pairs reduce the DPO off-policy gap; sketch the rejection-sampling → SFT loop (best-of-n by RM, then SFT on winners).\nCode: — (rejection sampling FT: sample n, score with RM/verifier, SFT on the best; pseudocode)\nDeliverable: Iterative/online notes"
   },
   {
-    "id": "peft-alignment-tax-safety-evaluation-of-alignment-046",
+    "id": "alignment-alignment-tax-safety-evaluation-of-alignment-014",
     "type": "concept",
     "stage": "F7",
-    "category": "peft",
+    "category": "alignment",
     "topic": "Alignment tax, safety & evaluation of alignment",
     "_source": "Theory: Alignment tax = capability drop from alignment (helpfulness vs harmlessness tension). Measuring it. Over-refusal / sycophancy as failure modes. Red-teaming the fine-tuned model. Safety fine-tuning can be undone by a few adversarial steps (shallow-alignment problem). Frontier-lab framing.\nCode: — (design an eval that separates helpfulness, harmlessness, and capability regression)\nDeliverable: Alignment-eval + safety notes"
   },
   {
-    "id": "peft-knowledge-distillation-logit-sequence-level-047",
+    "id": "distillation-knowledge-distillation-logit-sequence-level-001",
     "type": "concept",
     "stage": "F8",
-    "category": "peft",
+    "category": "distillation",
     "topic": "Knowledge distillation (logit / sequence-level)",
     "_source": "Theory: Train a small student to match a large teacher. Logit distillation: KL(student || teacher) on soft targets with temperature T. Sequence-level KD (train on teacher generations). Combine with CE on ground truth. Why soft targets carry 'dark knowledge'. Distilling a fine-tuned/aligned teacher into a deployable student.\nMath: L = α·T²·KL(σ(z_s/T) || σ(z_t/T)) + (1-α)·CE(y, σ(z_s)). Explain the T² gradient-scaling term and temperature's effect on soft targets.\nCode: distill_loss(student_logits, teacher_logits, labels, T, alpha); verify the soft-target term dominates at high T.\nDeliverable: distill.py + T ablation"
   },
   {
-    "id": "peft-continued-pretraining-domain-adaptation-048",
+    "id": "distillation-continued-pretraining-domain-adaptation-002",
     "type": "concept",
     "stage": "F8",
-    "category": "peft",
+    "category": "distillation",
     "topic": "Continued pretraining & domain adaptation",
     "_source": "Theory: Domain/language adaptation via continued pretraining (next-token on domain corpus) BEFORE SFT. Data mixing ratios (replay pretrain data to avoid forgetting). Vocabulary/tokenizer extension for new languages. When continued pretrain beats SFT (broad new knowledge, not just behavior).\nMath: Show a replay ratio r of general data bounds forgetting; reason about the domain/general mix.\nCode: — (design a continued-pretrain data mix + tokenizer-extension plan for a domain)\nDeliverable: Continued-pretrain notes"
   },
   {
-    "id": "peft-embedding-retriever-fine-tuning-your-kai-story-049",
+    "id": "distillation-embedding-retriever-fine-tuning-your-kai-story-003",
     "type": "concept",
     "stage": "F8",
-    "category": "peft",
+    "category": "distillation",
     "topic": "Embedding & retriever fine-tuning (your KAI story)",
     "_source": "Theory: Fine-tune bi-encoders/embedding models for retrieval. MultipleNegativesRankingLoss / InfoNCE with in-batch negatives. Hard-negative mining. Temperature. Eval with Recall@k, MRR, NDCG. Cross-encoder rerankers. Your BGE-M3-v2 fine-tuning — own every decision.\nMath: InfoNCE = -log[ exp(s(q,p⁺)/τ) / Σ exp(s(q,p)/τ) ]. Show in-batch negatives give B-1 negatives free; explain hard-negative mining's effect on the gradient.\nCode: Implement MNR/InfoNCE loss with in-batch negatives for a bi-encoder; verify Recall@k improves on a toy retrieval set.\nDeliverable: mnr_loss.py + retrieval eval"
   },
   {
-    "id": "peft-long-context-tool-use-function-calling-ft-050",
+    "id": "distillation-long-context-tool-use-function-calling-ft-004",
     "type": "concept",
     "stage": "F8",
-    "category": "peft",
+    "category": "distillation",
     "topic": "Long-context & tool-use / function-calling FT",
     "_source": "Theory: Fine-tuning to extend context (position-interpolation + FT on long samples) and to teach tool use (function-call format, when to call, argument filling, multi-tool). Data construction for agentic behavior. Ties to your voice bot's 8 tools.\nCode: — (design a function-calling SFT dataset schema + loss masking for tool tokens)\nDeliverable: Tool-use FT design notes"
   },
   {
-    "id": "peft-training-memory-math-mixed-precision-051",
+    "id": "training-systems-training-memory-math-mixed-precision-001",
     "type": "concept",
     "stage": "F9",
-    "category": "peft",
+    "category": "training-systems",
     "topic": "Training memory math & mixed precision",
     "_source": "Theory: Where memory goes: weights 2P + grads 2P + Adam states 12P = 16P bytes + activations. bf16 (no loss scaler) vs fp16 (needs GradScaler). Master weights. How LoRA/QLoRA collapse the 16P term. The calc behind 'will it fit'.\nMath: Full-FT 7B = 16×7 = 112GB (no activations). LoRA: base 14GB frozen + tiny adapter optimizer. Compute the fit on 1×/8× 80GB.\nCode: train_memory(params_B, dtype, method) → GB for full-FT vs LoRA vs QLoRA; verify 7B/70B cases.\nDeliverable: train_mem.py + cases"
   },
   {
-    "id": "peft-gradient-checkpointing-accumulation-offload-052",
+    "id": "training-systems-gradient-checkpointing-accumulation-offload-002",
     "type": "concept",
     "stage": "F9",
-    "category": "peft",
+    "category": "training-systems",
     "topic": "Gradient checkpointing, accumulation & offload",
     "_source": "Theory: Activation checkpointing: recompute activations in backward → ~√N memory for extra compute. Gradient accumulation for large effective batch. CPU/NVMe offload (ZeRO-Offload). Paged optimizers. The levers that let a big model fine-tune on small hardware — your H100 optimization toolkit.\nMath: Checkpointing memory ≈ O(√N) activations vs O(N); show the ~33% compute overhead tradeoff.\nCode: Add torch.utils.checkpoint to your training block; measure peak-memory drop vs the added step time.\nDeliverable: checkpointing.py + benchmark"
   },
   {
-    "id": "peft-distributed-fine-tuning-ddp-fsdp-zero-deepspeed-053",
+    "id": "training-systems-distributed-fine-tuning-ddp-fsdp-zero-deepspeed-003",
     "type": "concept",
     "stage": "F9",
-    "category": "peft",
+    "category": "training-systems",
     "topic": "Distributed fine-tuning (DDP, FSDP, ZeRO, DeepSpeed)",
     "_source": "Theory: DDP (replicate, all-reduce grads) vs FSDP/ZeRO (shard params/grads/optimizer across GPUs). ZeRO stages 1/2/3. When you need sharding for fine-tuning (7B fits on one GPU with LoRA; 70B full-FT needs FSDP). DeepSpeed vs FSDP. Communication tradeoffs.\nMath: ZeRO-3 memory per GPU ≈ 16P/N. Compute per-GPU memory to full-FT 70B on 8 GPUs; check feasibility.\nCode: — (decision tree: model size × method → DDP vs FSDP/ZeRO stage)\nDeliverable: Distributed-FT decision tree"
   },
   {
-    "id": "peft-evaluating-a-fine-tuned-model-no-ground-truth-054",
+    "id": "eval-evaluating-a-fine-tuned-model-no-ground-truth-001",
     "type": "concept",
     "stage": "F10",
-    "category": "peft",
+    "category": "eval",
     "topic": "Evaluating a fine-tuned model (no ground truth)",
     "_source": "Theory: The hard part: how do you know it improved? Held-out benchmarks, LLM-as-judge (pairwise win-rate vs baseline), human eval, task-specific metrics, capability regression checks (MMLU etc.), reward/KL curves. Avoiding eval gaming + contamination. Your DeepEval 3-model pipeline + 86-metric taxonomy.\nMath: Pairwise win-rate + confidence interval; note position/verbosity bias in LLM-as-judge and how to debias (swap order, length-control).\nCode: — (design an eval harness: baseline vs fine-tuned, LLM-judge win-rate with position-swap, regression suite)\nDeliverable: Eval harness design"
   },
   {
-    "id": "peft-llm-as-judge-pitfalls-calibration-055",
+    "id": "eval-llm-as-judge-pitfalls-calibration-002",
     "type": "concept",
     "stage": "F10",
-    "category": "peft",
+    "category": "eval",
     "topic": "LLM-as-judge pitfalls & calibration",
     "_source": "Theory: Position bias, verbosity/length bias, self-preference, style-over-substance. Mitigations: randomize order, length control, rubric anchoring, multiple judges, reference-guided grading. When a small human-labeled set must calibrate the judge. Owns your 'how did you ensure your eval wasn't biased' answer.\nCode: — (build a judge rubric + debiasing checklist; rehearse the 'unbiased eval' answer)\nDeliverable: Judge rubric + answer"
   },
   {
-    "id": "peft-end-to-end-design-a-fine-tuning-pipeline-056",
+    "id": "eval-end-to-end-design-a-fine-tuning-pipeline-003",
     "type": "concept",
     "stage": "F10",
-    "category": "peft",
+    "category": "eval",
     "topic": "End-to-end: design a fine-tuning pipeline",
     "_source": "Theory: The full mock: data pipeline → SFT → preference tuning (DPO/PPO) → eval → deploy → monitor/drift → retrain. Experiment tracking, hyperparameter search, preventing eval leakage, versioning data+model. Your custom tracker + IDFC fine-tuning platform. The 35-min system-design answer.\nMath: Full memory + cost estimate for the chosen scenario, defending every choice.\nCode: — (whiteboard the whole pipeline end to end; time it to 35 min)\nDeliverable: FT pipeline system-design writeup"
   },
   {
-    "id": "peft-fine-tuning-formulas-cold-re-implementations-057",
+    "id": "eval-fine-tuning-formulas-cold-re-implementations-004",
     "type": "concept",
     "stage": "F10",
-    "category": "peft",
+    "category": "eval",
     "topic": "Fine-tuning formulas & cold re-implementations",
     "_source": "Theory: Re-derive/re-implement cold, no notes, under time: SFT masked loss, LoRA (ΔW=BA, α/r), DPO loss + full derivation, BT reward loss, RLHF objective + π*, PPO clip + GAE, GRPO advantage, InfoNCE. The pre-interview confidence test for the whole fine-tuning stack.\nMath: Reproduce every formula above from memory; redo the DPO derivation cold.\nCode: Cold re-impl (<20 min each, no notes): LoRA, DPO loss, BT loss, PPO clip.\nDeliverable: Timed cold re-dos + cheat sheet"
   },

@@ -36,6 +36,10 @@ DEFINITION_PROMPT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Literal "\\u00b7" text instead of the character it encodes. Happens when a
+# generated batch double-escapes its JSON, and it renders as visible garbage.
+LITERAL_ESCAPE_RE = re.compile(r"\\u[0-9a-fA-F]{4}")
+
 # A rough tell for a vague example: no digits is already fatal in the schema,
 # but hedge words with only a token number are the usual near-miss.
 VAGUE_EXAMPLE_RE = re.compile(
@@ -134,6 +138,14 @@ def main() -> int:
 
 def _lint_card(card: Card, where: str, warnings: list[str]) -> None:
     """Style checks against CLAUDE.md's authoring standards. Non-fatal."""
+    for field in ("concept", "example", "interview_question", "topic"):
+        if LITERAL_ESCAPE_RE.search(getattr(card, field)):
+            warnings.append(f"{where} id={card.id}: {field} contains a literal "
+                            "\\uXXXX escape instead of the character")
+    for i, point in enumerate(card.answer_points):
+        if LITERAL_ESCAPE_RE.search(point):
+            warnings.append(f"{where} id={card.id}: answer_points[{i}] contains a "
+                            "literal \\uXXXX escape")
     if DEFINITION_PROMPT_RE.match(card.interview_question):
         warnings.append(
             f"{where} id={card.id}: interview_question reads as a definition prompt, "
