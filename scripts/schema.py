@@ -22,8 +22,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Vocabularies
 # --------------------------------------------------------------------------
 
-# SPEC 2 "Categories" — mirrors the tracker so coverage maps one-to-one.
+# SPEC 2 "Categories".
+#
+# The Fine-Tuning and Inference sheets used to collapse into one category each
+# ("peft" and "inference"), which put 41% of the deck under two labels spanning
+# 13 and 14 stages. The chip on the card said "peft" for both a LoRA card and a
+# DPO card, which made it useless as a filter. They are split by topic now.
 CATEGORIES: tuple[str, ...] = (
+    # Tracker 1 — the core LLM path
     "math-prereq",
     "nn-foundations",
     "tokenization",
@@ -33,41 +39,100 @@ CATEGORIES: tuple[str, ...] = (
     "decoder",
     "efficient-attention",
     "training-scale",
-    "peft",
-    "alignment",
-    "inference",
     "architectures",
     "distributed",
     "classical-ml",
     "production",
     "safety-agents",
+    # Fine-Tuning sheet
+    "post-training",
+    "ft-data",
+    "sft",
+    "peft",
+    "reward-modeling",
+    "rlhf",
+    "dpo",
+    "alignment",
+    "distillation",
+    "training-systems",
+    "eval",
+    # Inference Engineering sheet
+    "inference",
+    "inference-math",
+    "gpu-arch",
+    "kv-cache",
+    "attention-kernels",
+    "batching",
+    "quantization",
+    "decoding",
+    "distributed-inference",
+    "serving",
+    # Tracker 2
     "dsa",
     "system-design",
     "behavioral",
 )
 
 Category = Literal[
-    "math-prereq",
-    "nn-foundations",
-    "tokenization",
-    "attention",
-    "positional",
-    "transformer-block",
-    "decoder",
-    "efficient-attention",
-    "training-scale",
-    "peft",
-    "alignment",
-    "inference",
-    "architectures",
-    "distributed",
-    "classical-ml",
-    "production",
-    "safety-agents",
-    "dsa",
-    "system-design",
-    "behavioral",
+    "math-prereq", "nn-foundations", "tokenization", "attention", "positional",
+    "transformer-block", "decoder", "efficient-attention", "training-scale",
+    "architectures", "distributed", "classical-ml", "production", "safety-agents",
+    "post-training", "ft-data", "sft", "peft", "reward-modeling", "rlhf", "dpo",
+    "alignment", "distillation", "training-systems", "eval",
+    "inference", "inference-math", "gpu-arch", "kv-cache", "attention-kernels",
+    "batching", "quantization", "decoding", "distributed-inference", "serving",
+    "dsa", "system-design", "behavioral",
 ]
+
+# Stage -> category is the single source of truth. Both the seeder and the
+# schema read it, so a card's category can never drift from its stage.
+STAGE_CATEGORY: dict[str, str] = {
+    "S0": "math-prereq",
+    "S1": "nn-foundations",
+    "S2": "tokenization",
+    "S3": "attention",
+    "S4": "positional",
+    "S5": "transformer-block",
+    "S6": "decoder",
+    "S7": "efficient-attention",
+    "S8": "training-scale",
+    "S9": "peft",
+    "S10": "alignment",
+    "S11": "quantization",
+    "S12": "architectures",
+    "S13": "distributed",
+    "S14": "classical-ml",
+    "S15": "production",
+    "S16": "safety-agents",
+    "I0": "inference-math",
+    "I1": "gpu-arch",
+    "I2": "inference-math",
+    "I3": "kv-cache",
+    "I4": "attention-kernels",
+    "I5": "batching",
+    "I6": "quantization",
+    "I7": "decoding",
+    "I8": "distributed-inference",
+    "I9": "serving",
+    "I10": "serving",
+    "I11": "inference",
+    "I12": "inference",
+    "F0": "post-training",
+    "F1": "ft-data",
+    "F2": "sft",
+    "F3": "peft",
+    "F4": "reward-modeling",
+    "F5": "rlhf",
+    "F5B": "rlhf",
+    "F6": "dpo",
+    "F7": "alignment",
+    "F8": "distillation",
+    "F9": "training-systems",
+    "F10": "eval",
+    "D": "dsa",
+    "SD": "system-design",
+    "B": "behavioral",
+}
 
 CardType = Literal["concept", "formula"]
 Difficulty = Literal["easy", "mid", "hard"]
@@ -182,6 +247,17 @@ class Card(BaseModel):
         """SPEC 2: `formula` is required when `type` is `formula`."""
         if self.type == "formula" and not self.formula:
             raise ValueError('type is "formula" so the `formula` field is required')
+        return self
+
+    @model_validator(mode="after")
+    def _category_matches_stage(self) -> "Card":
+        """Category is derived from stage, so the two can never disagree."""
+        expected = STAGE_CATEGORY.get(self.stage)
+        if expected is not None and self.category != expected:
+            raise ValueError(
+                f"stage {self.stage} implies category {expected!r}, "
+                f"but the card says {self.category!r}"
+            )
         return self
 
     @model_validator(mode="after")

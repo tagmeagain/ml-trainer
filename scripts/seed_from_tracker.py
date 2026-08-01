@@ -25,7 +25,7 @@ from pathlib import Path
 import openpyxl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from schema import Stub, slugify  # noqa: E402
+from schema import STAGE_CATEGORY, Stub, slugify  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 XLSX = ROOT / "tracker" / "Master_Interview_Prep_Tracker.xlsx"
@@ -37,65 +37,32 @@ CARDS = CONTENT / "cards.json"
 # Stage and category mapping (SPEC 6.1)
 # --------------------------------------------------------------------------
 
-# Tracker 1 stage number -> category. The tracker's 17 stages line up one-to-one
-# with the first 17 categories in SPEC 2, which is why coverage maps cleanly.
-TRACKER1_CATEGORY = {
-    0: "math-prereq",
-    1: "nn-foundations",
-    2: "tokenization",
-    3: "attention",
-    4: "positional",
-    5: "transformer-block",
-    6: "decoder",
-    7: "efficient-attention",
-    8: "training-scale",
-    9: "peft",
-    10: "alignment",
-    11: "inference",
-    12: "architectures",
-    13: "distributed",
-    14: "classical-ml",
-    15: "production",
-    16: "safety-agents",
-}
-
-# Tracker 2 Section column -> (stage code, category).
+# Tracker 2 Section column -> stage code. Category follows from the stage.
 TRACKER2_SECTION = {
-    "DSA — Coding Patterns": ("D", "dsa"),
-    "System Design": ("SD", "system-design"),
-    "Projects — Q&A & STAR": ("B", "behavioral"),
-    "Behavioral / STAR": ("B", "behavioral"),
+    "DSA — Coding Patterns": "D",
+    "System Design": "SD",
+    "Projects — Q&A & STAR": "B",
+    "Behavioral / STAR": "B",
 }
 
-# Formulas sheet Category column -> (stage code, category).
-FORMULA_CATEGORY = {
-    "ATTENTION": ("S3", "attention"),
-    "POSITION": ("S4", "positional"),
-    "NORMS": ("S5", "transformer-block"),
-    "FFN": ("S5", "transformer-block"),
-    "TRAINING": ("S8", "training-scale"),
-    "PEFT": ("S9", "peft"),
-    "RLHF": ("S10", "alignment"),
-    "QUANT": ("S11", "inference"),
-    "GPU": ("I2", "inference"),
-    "FLASHATTN": ("S7", "efficient-attention"),
-    "MoE": ("S12", "architectures"),
-    "SOFTMAX": ("S1", "nn-foundations"),
-    "BIAS-VAR": ("S14", "classical-ml"),
-    "A/B TEST": ("S14", "classical-ml"),
+# Formulas sheet Category column -> stage code.
+FORMULA_STAGE = {
+    "ATTENTION": "S3", "POSITION": "S4", "NORMS": "S5", "FFN": "S5",
+    "TRAINING": "S8", "PEFT": "S9", "RLHF": "S10", "QUANT": "S11",
+    "GPU": "I2", "FLASHATTN": "S7", "MoE": "S12", "SOFTMAX": "S1",
+    "BIAS-VAR": "S14", "A/B TEST": "S14",
 }
 
-# A handful of formulas sit in a sheet category that is not where the card
-# belongs — KV cache is an inference card, not an attention-theory one. Keyed
-# on the Name column.
-FORMULA_OVERRIDES = {
-    "KV Cache Memory": ("I3", "inference"),
-    "GQA KV Reduction": ("S7", "efficient-attention"),
-    "Spec Decoding Speedup": ("I7", "inference"),
-    "Arithmetic Intensity": ("I1", "inference"),
-    "LLM Decode TPOT": ("I2", "inference"),
-    "LLM Prefill TTFT": ("I2", "inference"),
-    "FA IO complexity": ("I4", "inference"),
+# A few formulas belong to a different stage than their sheet category implies
+# — KV cache is an inference card, not attention theory. Keyed on Name.
+FORMULA_STAGE_OVERRIDES = {
+    "KV Cache Memory": "I3",
+    "GQA KV Reduction": "S7",
+    "Spec Decoding Speedup": "I7",
+    "Arithmetic Intensity": "I1",
+    "LLM Decode TPOT": "I2",
+    "LLM Prefill TTFT": "I2",
+    "FA IO complexity": "I4",
 }
 
 SHEET_T1 = "Tracker 1 — LLM Learning"
@@ -168,7 +135,7 @@ def extract(wb) -> tuple[list[dict], Counter, list[str]]:
         if stage is None:
             notes.append(f"{SHEET_T1}: unmapped stage {row[1]!r} for topic {topic!r}")
             continue
-        category = TRACKER1_CATEGORY.get(int(stage[1:]))
+        category = STAGE_CATEGORY.get(stage)
         if category is None:
             notes.append(f"{SHEET_T1}: no category for stage {stage}")
             continue
@@ -196,7 +163,7 @@ def extract(wb) -> tuple[list[dict], Counter, list[str]]:
             {
                 "type": "concept",
                 "stage": stage,
-                "category": "inference",
+                "category": STAGE_CATEGORY[stage],
                 "topic": topic,
                 "_source": _source_text(_clean(row[3]), _clean(row[4]), _clean(row[5]), _clean(row[6])),
             }
@@ -216,7 +183,7 @@ def extract(wb) -> tuple[list[dict], Counter, list[str]]:
             {
                 "type": "concept",
                 "stage": stage,
-                "category": "peft",
+                "category": STAGE_CATEGORY[stage],
                 "topic": topic,
                 "_source": _source_text(_clean(row[3]), _clean(row[4]), _clean(row[5]), _clean(row[6])),
             }
@@ -230,11 +197,11 @@ def extract(wb) -> tuple[list[dict], Counter, list[str]]:
         if not topic:
             continue
         section = _clean(row[1])
-        mapped = TRACKER2_SECTION.get(section)
-        if mapped is None:
+        stage = TRACKER2_SECTION.get(section)
+        if stage is None:
             notes.append(f"{SHEET_T2}: unmapped section {section!r} for topic {topic!r}")
             continue
-        stage, category = mapped
+        category = STAGE_CATEGORY[stage]
         out.append(
             {
                 "type": "concept",
@@ -252,11 +219,11 @@ def extract(wb) -> tuple[list[dict], Counter, list[str]]:
         name = _clean(row[1])
         if not name:
             continue
-        mapped = FORMULA_OVERRIDES.get(name) or FORMULA_CATEGORY.get(_clean(row[0]))
-        if mapped is None:
+        stage = FORMULA_STAGE_OVERRIDES.get(name) or FORMULA_STAGE.get(_clean(row[0]))
+        if stage is None:
             notes.append(f"{SHEET_FORMULAS}: unmapped category {row[0]!r} for {name!r}")
             continue
-        stage, category = mapped
+        category = STAGE_CATEGORY[stage]
         out.append(
             {
                 "type": "formula",

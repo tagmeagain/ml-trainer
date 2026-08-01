@@ -7,14 +7,14 @@
     "topic": "Scaled Dot-Product",
     "difficulty": "mid",
     "formula": "\\text{Attention}(Q,K,V) = \\mathrm{softmax}\\!\\left(\\frac{QK^{\\top}}{\\sqrt{d_k}}\\right)V",
-    "concept": "Q is n\\u00d7d_k queries, K is m\\u00d7d_k keys, V is m\\u00d7d_v values. QK^T scores every query against every key. Dividing by \\u221ad_k holds the variance of that dot product near 1: summing d_k unit-variance products gives variance d_k, so without the scale the logits spread as \\u221ad_k, the softmax saturates toward one-hot, and its Jacobian vanishes. Softmax over the key axis turns scores into a distribution, and multiplying by V takes the weighted average. Causal masking adds \\u2212\\u221e to positions j>i before the softmax so future tokens get exactly zero weight.",
-    "example": "GPT-2 small: d_model=768, 12 heads, d_k=64, n=1024. Per head QK^T is 1024\\u00d71024 = 1.05M scores; across 12 heads that is 12.6M scores and about 4.2 GFLOPs for the two matmuls per layer. Unscaled, a dot product of unit-variance entries over 64 terms has std \\u221a64 = 8, so logits span roughly \\u00b124 and softmax puts over 0.99 on a single key. Dividing by 8 pulls the std back to 1.",
-    "interview_question": "A colleague drops the 1/\\u221ad_k term and reports that training stalls almost immediately at d_k=64 but is perfectly fine at d_k=8. Derive why, and say what you would expect to see in the attention gradients.",
+    "concept": "Q is n×d_k queries, K is m×d_k keys, V is m×d_v values. QK^T scores every query against every key. Dividing by √d_k holds the variance of that dot product near 1: summing d_k unit-variance products gives variance d_k, so without the scale the logits spread as √d_k, the softmax saturates toward one-hot, and its Jacobian vanishes. Softmax over the key axis turns scores into a distribution, and multiplying by V takes the weighted average. Causal masking adds −∞ to positions j>i before the softmax so future tokens get exactly zero weight.",
+    "example": "GPT-2 small: d_model=768, 12 heads, d_k=64, n=1024. Per head QK^T is 1024×1024 = 1.05M scores; across 12 heads that is 12.6M scores and about 4.2 GFLOPs for the two matmuls per layer. Unscaled, a dot product of unit-variance entries over 64 terms has std √64 = 8, so logits span roughly ±24 and softmax puts over 0.99 on a single key. Dividing by 8 pulls the std back to 1.",
+    "interview_question": "A colleague drops the 1/√d_k term and reports that training stalls almost immediately at d_k=64 but is perfectly fine at d_k=8. Derive why, and say what you would expect to see in the attention gradients.",
     "answer_points": [
-      "q\\u00b7k sums d_k products; with unit-variance independent entries Var = d_k, so logit std is \\u221ad_k \\u2014 8 at d_k=64 versus 2.8 at d_k=8",
-      "Wide logits drive softmax toward one-hot, and its Jacobian diag(s) \\u2212 ss^T \\u2192 0 there, so no gradient reaches W_Q or W_K",
+      "q·k sums d_k products; with unit-variance independent entries Var = d_k, so logit std is √d_k — 8 at d_k=64 versus 2.8 at d_k=8",
+      "Wide logits drive softmax toward one-hot, and its Jacobian diag(s) − ss^T → 0 there, so no gradient reaches W_Q or W_K",
       "d_k=8 still lands inside the softmax's responsive band, which is why the small case trains normally",
-      "The scale is a constant and could in principle be folded into W_Q at init \\u2014 it is not, because the weights drift during training while \\u221ad_k stays exact"
+      "The scale is a constant and could in principle be folded into W_Q at init — it is not, because the weights drift during training while √d_k stays exact"
     ],
     "tags": [
       "attention",
@@ -31,15 +31,15 @@
     "topic": "MHA Parameters",
     "difficulty": "mid",
     "formula": "\\begin{gathered} P_{\\text{attn}} = 4\\,d_{\\text{model}}^{2}, \\qquad P_{\\text{FFN}} = 8\\,d_{\\text{model}}^{2} \\\\[3pt] P_{\\text{block}} = 12\\,d_{\\text{model}}^{2} \\end{gathered}",
-    "concept": "W_Q, W_K, W_V and W_O are each d_model\\u00d7d_model, so attention costs 4d\\u00b2 per layer no matter how many heads there are \\u2014 splitting into h heads only reshapes d_model into h\\u00b7d_h. A 4\\u00d7-expansion FFN adds two d\\u00d74d matrices, or 8d\\u00b2, making the block 12d\\u00b2 and putting attention at one third of it. Multiply by L for the body. Embedding and unembedding are V\\u00b7d_model and sit outside this count.",
-    "example": "GPT-3 175B: d_model=12288, L=96. Attention is 4\\u00b712288\\u00b2 = 604M per layer \\u00d7 96 = 58B. FFN is 8\\u00b712288\\u00b2 = 1.21B per layer \\u00d7 96 = 116B. Body total 174B, plus a 50257\\u00d712288 embedding at 0.6B \\u2014 that is the 175B. Do the same for GPT-2 small (d=768, L=12): 12\\u00b7768\\u00b2\\u00b712 = 85M body, but the 50257\\u00d7768 embedding adds 39M, a third again.",
+    "concept": "W_Q, W_K, W_V and W_O are each d_model×d_model, so attention costs 4d² per layer no matter how many heads there are — splitting into h heads only reshapes d_model into h·d_h. A 4×-expansion FFN adds two d×4d matrices, or 8d², making the block 12d² and putting attention at one third of it. Multiply by L for the body. Embedding and unembedding are V·d_model and sit outside this count.",
+    "example": "GPT-3 175B: d_model=12288, L=96. Attention is 4·12288² = 604M per layer × 96 = 58B. FFN is 8·12288² = 1.21B per layer × 96 = 116B. Body total 174B, plus a 50257×12288 embedding at 0.6B — that is the 175B. Do the same for GPT-2 small (d=768, L=12): 12·768²·12 = 85M body, but the 50257×768 embedding adds 39M, a third again.",
     "interview_question": "You are asked at a whiteboard to size a 96-layer, d_model=12288 decoder in under a minute, then to say what fraction of it a LoRA placed only on the attention projections would touch. Work it through.",
     "answer_points": [
-      "12d\\u00b2 per layer: 4d\\u00b2 attention plus 8d\\u00b2 FFN at 4\\u00d7 expansion, so 12\\u00b712288\\u00b2\\u00b796 \\u2248 174B",
-      "Head count never enters \\u2014 h heads of width d_model/h partition the same four matrices",
-      "Embedding plus unembedding is V\\u00b7d_model: negligible at 175B, but a third of a 125M model",
-      "Attention is exactly one third of the body, so attention-only LoRA can reach at most 33% of it \\u2014 which is why modern recipes also target the FFN projections",
-      "GQA breaks the 4d\\u00b2 rule: W_K and W_V shrink to d_model\\u00b7(G\\u00b7d_h), putting LLaMA-2 70B attention nearer 2.25d\\u00b2"
+      "12d² per layer: 4d² attention plus 8d² FFN at 4× expansion, so 12·12288²·96 ≈ 174B",
+      "Head count never enters — h heads of width d_model/h partition the same four matrices",
+      "Embedding plus unembedding is V·d_model: negligible at 175B, but a third of a 125M model",
+      "Attention is exactly one third of the body, so attention-only LoRA can reach at most 33% of it — which is why modern recipes also target the FFN projections",
+      "GQA breaks the 4d² rule: W_K and W_V shrink to d_model·(G·d_h), putting LLaMA-2 70B attention nearer 2.25d²"
     ],
     "tags": [
       "parameters",
@@ -49,22 +49,22 @@
     "source_link": "https://arxiv.org/abs/2005.14165"
   },
   {
-    "id": "inference-kv-cache-memory-062",
+    "id": "kv-cache-kv-cache-memory-001",
     "type": "formula",
     "stage": "I3",
-    "category": "inference",
+    "category": "kv-cache",
     "topic": "KV Cache Memory",
     "difficulty": "hard",
     "formula": "\\text{bytes} = 2 \\cdot L \\cdot S \\cdot G \\cdot d_h \\cdot b_{\\text{dtype}} \\cdot B",
     "concept": "Every layer stores one K and one V tensor per KV head, which is the leading 2. L is layers, S positions in context, G key/value heads (under GQA fewer than the query heads H), d_h the per-head width, b_dtype bytes per element, B concurrent sequences. It is linear in both S and B and is never amortised: weights are paid once for the whole fleet, cache is paid per request per token.",
-    "example": "LLaMA-2 70B: L=80, G=8, d_h=128, fp16. At S=4096, B=1 that is 2\\u00b780\\u00b74096\\u00b78\\u00b7128\\u00b72 = 10.5 GB. Weights are 140 GB, so on a 2\\u00d780 GB A100 node only 20 GB remains \\u2014 under two concurrent 4k requests before OOM. Switch the cache to FP8 and it halves to 5.2 GB, buying four. Without GQA (G=H=64) the same request would need 84 GB and would not fit at all.",
+    "example": "LLaMA-2 70B: L=80, G=8, d_h=128, fp16. At S=4096, B=1 that is 2·80·4096·8·128·2 = 10.5 GB. Weights are 140 GB, so on a 2×80 GB A100 node only 20 GB remains — under two concurrent 4k requests before OOM. Switch the cache to FP8 and it halves to 5.2 GB, buying four. Without GQA (G=H=64) the same request would need 84 GB and would not fit at all.",
     "interview_question": "Your fleet holds 40 concurrent requests at 512-token contexts but only 4 once average context reaches 4k, and GPU utilisation falls with it. Derive the memory numbers and rank the fixes you would ship.",
     "answer_points": [
-      "Cache is linear in S\\u00b7B, so 8\\u00d7 the context is 8\\u00d7 the bytes and the batch that fits shrinks 8\\u00d7",
-      "Small batch means decode still reads all 140 GB of weights to emit few tokens \\u2014 arithmetic intensity collapses and the GPU idles on HBM",
-      "GQA already bought 8\\u00d7 here (64 query heads, 8 KV heads); remaining levers are FP8/INT8 cache, PagedAttention against fragmentation, and prefix caching for shared system prompts",
+      "Cache is linear in S·B, so 8× the context is 8× the bytes and the batch that fits shrinks 8×",
+      "Small batch means decode still reads all 140 GB of weights to emit few tokens — arithmetic intensity collapses and the GPU idles on HBM",
+      "GQA already bought 8× here (64 query heads, 8 KV heads); remaining levers are FP8/INT8 cache, PagedAttention against fragmentation, and prefix caching for shared system prompts",
       "Utilisation falling is the tell that this is a memory-capacity problem showing up as a bandwidth problem, not a compute shortage",
-      "MLA, as in DeepSeek-V2, compresses KV into a single per-token latent \\u2014 roughly a tenth of GQA, and an axis independent of quantisation"
+      "MLA, as in DeepSeek-V2, compresses KV into a single per-token latent — roughly a tenth of GQA, and an axis independent of quantisation"
     ],
     "tags": [
       "kv-cache",
@@ -82,14 +82,14 @@
     "topic": "GQA KV Reduction",
     "difficulty": "hard",
     "formula": "\\begin{gathered} \\frac{\\text{KV}_{\\text{MHA}}}{\\text{KV}_{\\text{GQA}}} = \\frac{H}{G} \\\\[3pt] G = H \\Rightarrow \\text{MHA}, \\qquad G = 1 \\Rightarrow \\text{MQA} \\end{gathered}",
-    "concept": "H is the number of query heads, G the number of key/value groups. Query heads are untouched; each group of H/G query heads shares one K and one V projection, so the cache shrinks by exactly H/G. The saving is in the KV projections and the cache only \\u2014 attention FLOPs barely move, because K and V are broadcast back across their group before the matmul. G=H recovers plain MHA, G=1 is multi-query attention.",
-    "example": "LLaMA-2 70B: d_model=8192, H=64, d_h=128, L=80, G=8. Cache falls 8\\u00d7, from 84 GB to 10.5 GB at S=4096 fp16. W_K and W_V each shrink from 8192\\u00d78192 to 8192\\u00d71024, saving 117M params per layer and 9.4B across 80 layers. The checkpoint is produced by mean-pooling each group's K and V projections from an MHA model and uptraining on a small fraction of the original token budget, not by pretraining from scratch.",
+    "concept": "H is the number of query heads, G the number of key/value groups. Query heads are untouched; each group of H/G query heads shares one K and one V projection, so the cache shrinks by exactly H/G. The saving is in the KV projections and the cache only — attention FLOPs barely move, because K and V are broadcast back across their group before the matmul. G=H recovers plain MHA, G=1 is multi-query attention.",
+    "example": "LLaMA-2 70B: d_model=8192, H=64, d_h=128, L=80, G=8. Cache falls 8×, from 84 GB to 10.5 GB at S=4096 fp16. W_K and W_V each shrink from 8192×8192 to 8192×1024, saving 117M params per layer and 9.4B across 80 layers. The checkpoint is produced by mean-pooling each group's K and V projections from an MHA model and uptraining on a small fraction of the original token budget, not by pretraining from scratch.",
     "interview_question": "You have an MHA checkpoint that will not serve at your target concurrency. Compute what G you need to fit a batch of 16 at 4k context in 40 GB, and explain how you would obtain that checkpoint without pretraining again.",
     "answer_points": [
-      "Cache scales linearly in G: solve 2\\u00b7L\\u00b7S\\u00b7G\\u00b7d_h\\u00b7b\\u00b7B \\u2264 40 GB for G and round down to a power of two",
-      "Query heads stay at H, so attention FLOPs are essentially unchanged \\u2014 this buys memory bandwidth and capacity, not compute",
+      "Cache scales linearly in G: solve 2·L·S·G·d_h·b·B ≤ 40 GB for G and round down to a power of two",
+      "Query heads stay at H, so attention FLOPs are essentially unchanged — this buys memory bandwidth and capacity, not compute",
       "Convert by mean-pooling each group's K and V projection weights, then uptrain briefly on in-distribution data",
-      "G=1 (MQA) saves the most but costs quality and destabilises training; G\\u22488 is the usual knee",
+      "G=1 (MQA) saves the most but costs quality and destabilises training; G≈8 is the usual knee",
       "G must stay at or above the tensor-parallel degree, or KV heads have to be replicated across ranks and the memory saving partly evaporates"
     ],
     "tags": [
@@ -107,11 +107,11 @@
     "topic": "RoPE",
     "difficulty": "hard",
     "formula": "\\begin{gathered} \\tilde{q}_m = q_m e^{i m \\theta}, \\quad \\theta_j = \\text{base}^{-2j/d} \\\\[3pt] \\langle \\tilde{q}_m, \\tilde{k}_n \\rangle = \\mathrm{Re}\\big[q_m \\bar{k}_n e^{i(m-n)\\theta}\\big] \\end{gathered}",
-    "concept": "Split each head's query and key into d/2 two-dimensional pairs and rotate pair j at position m by angle m\\u00b7\\u03b8_j, with \\u03b8_j = base^(\\u22122j/d). Because rotations are orthogonal, the dot product of a rotated query and a rotated key depends only on the offset m\\u2212n: absolute positions go in, a relative score comes out. Nothing is added to the residual stream \\u2014 RoPE touches Q and K only, inside every layer, and never V.",
-    "example": "LLaMA-2 has d_h=128, so 64 frequency pairs, base=10000. Wavelengths run from 2\\u03c0 \\u2248 6.3 tokens at j=0 to about 54000 tokens at j=63. At S=4096 only roughly the first 45 of 64 pairs ever complete a full rotation during training; the rest act as slowly varying absolute features. LLaMA-3 raises base to 500000, stretching the longest wavelength to about 2.5M tokens, which is what supports its 128k context.",
-    "interview_question": "Show that a rotary-embedded attention score depends only on m\\u2212n, then explain why feeding such a model sequences 8\\u00d7 longer than it trained on degrades sharply while position interpolation does not.",
+    "concept": "Split each head's query and key into d/2 two-dimensional pairs and rotate pair j at position m by angle m·θ_j, with θ_j = base^(−2j/d). Because rotations are orthogonal, the dot product of a rotated query and a rotated key depends only on the offset m−n: absolute positions go in, a relative score comes out. Nothing is added to the residual stream — RoPE touches Q and K only, inside every layer, and never V.",
+    "example": "LLaMA-2 has d_h=128, so 64 frequency pairs, base=10000. Wavelengths run from 2π ≈ 6.3 tokens at j=0 to about 54000 tokens at j=63. At S=4096 only roughly the first 45 of 64 pairs ever complete a full rotation during training; the rest act as slowly varying absolute features. LLaMA-3 raises base to 500000, stretching the longest wavelength to about 2.5M tokens, which is what supports its 128k context.",
+    "interview_question": "Show that a rotary-embedded attention score depends only on m−n, then explain why feeding such a model sequences 8× longer than it trained on degrades sharply while position interpolation does not.",
     "answer_points": [
-      "Rotations are orthogonal: \\u27e8R_m q, R_n k\\u27e9 = q^T R_m^T R_n k = q^T R_{n\\u2212m} k, so only the offset survives",
+      "Rotations are orthogonal: ⟨R_m q, R_n k⟩ = q^T R_m^T R_n k = q^T R_{n−m} k, so only the offset survives",
       "High-frequency pairs wrap many times during training and stay in distribution; low-frequency pairs at large m reach angles never seen, and those out-of-distribution rotations wreck the score",
       "Position interpolation rescales m by L_train/L_test so every angle stays inside the trained range, paying for it in high-frequency resolution",
       "RoPE is re-applied per layer to Q and K only, never to V or the residual stream, so it does not accumulate with depth the way a learned absolute embedding does"
@@ -131,13 +131,13 @@
     "topic": "NTK Context Scaling",
     "difficulty": "hard",
     "formula": "\\text{base}_{\\text{new}} = \\text{base}_{\\text{old}} \\cdot s^{\\frac{d}{d-2}}, \\qquad s = \\frac{L_{\\text{test}}}{L_{\\text{train}}}",
-    "concept": "NTK-aware scaling extends context by changing the RoPE base rather than the positions. Raising the base stretches low-frequency pairs by roughly the full factor s \\u2014 exactly where out-of-distribution angles appear \\u2014 while leaving high-frequency pairs almost untouched, so local token-order resolution survives. The d/(d\\u22122) exponent is chosen so the lowest-frequency pair lands at precisely s after scaling. Position interpolation instead divides every position by s and blurs all frequencies equally.",
-    "example": "LLaMA-2, d_h=128, base=10000, extending 4096 \\u2192 32768 gives s=8 and base_new = 10000\\u00b78^(128/126) \\u2248 8.3\\u00d710\\u2074. The lowest-frequency pair's wavelength moves from about 54000 to about 4.3\\u00d710\\u2075 tokens, comfortably past 32768, while the j=0 pair moves only from 6.28 to 6.29 tokens. Plain interpolation at s=8 would instead have stretched that j=0 wavelength to 50 tokens \\u2014 an 8\\u00d7 loss of local resolution.",
+    "concept": "NTK-aware scaling extends context by changing the RoPE base rather than the positions. Raising the base stretches low-frequency pairs by roughly the full factor s — exactly where out-of-distribution angles appear — while leaving high-frequency pairs almost untouched, so local token-order resolution survives. The d/(d−2) exponent is chosen so the lowest-frequency pair lands at precisely s after scaling. Position interpolation instead divides every position by s and blurs all frequencies equally.",
+    "example": "LLaMA-2, d_h=128, base=10000, extending 4096 → 32768 gives s=8 and base_new = 10000·8^(128/126) ≈ 8.3×10⁴. The lowest-frequency pair's wavelength moves from about 54000 to about 4.3×10⁵ tokens, comfortably past 32768, while the j=0 pair moves only from 6.28 to 6.29 tokens. Plain interpolation at s=8 would instead have stretched that j=0 wavelength to 50 tokens — an 8× loss of local resolution.",
     "interview_question": "You must take a 4k-trained RoPE model to 32k with only a few hundred fine-tuning steps. Compare NTK base scaling against position interpolation numerically at both ends of the frequency spectrum, and say which you ship.",
     "answer_points": [
-      "PI divides all positions by s, so every wavelength stretches 8\\u00d7 including j=0, costing local order resolution uniformly",
-      "NTK scales the base, making the effect frequency-dependent: lowest pair stretched \\u2248s, highest pair essentially unchanged",
-      "The d/(d\\u22122) exponent exists so the j = d/2\\u22121 pair lands at exactly s \\u2014 it is not a fudge factor",
+      "PI divides all positions by s, so every wavelength stretches 8× including j=0, costing local order resolution uniformly",
+      "NTK scales the base, making the effect frequency-dependent: lowest pair stretched ≈s, highest pair essentially unchanged",
+      "The d/(d−2) exponent exists so the j = d/2−1 pair lands at exactly s — it is not a fudge factor",
       "NTK degrades if pushed zero-shot well past its target s; YaRN combines ramped per-band interpolation with an attention temperature term and needs far fewer tokens than PI to recover"
     ],
     "tags": [
@@ -155,12 +155,12 @@
     "topic": "ALiBi",
     "difficulty": "mid",
     "formula": "\\text{score}_{ij} = \\frac{q_i \\cdot k_j}{\\sqrt{d_k}} - m_h\\,(i-j), \\qquad m_h = 2^{-8h/n}",
-    "concept": "No positional embedding at all. A fixed, non-learned linear penalty is subtracted from each attention logit in proportion to the distance between query i and key j. Head h gets its own slope m_h from a geometric sequence, so with n heads the slopes span 2^(\\u22128/n) down to 2^\\u22128. Small-slope heads see almost globally, large-slope heads behave as local windows. Nothing is added to Q, K, or the residual stream, so the penalty extends to any length for free.",
-    "example": "With n=16 heads the slopes run from 2^(\\u22120.5) = 0.71 down to 2^\\u22128 = 0.0039. At a distance of 1000 tokens the sharpest head subtracts 710 from its logit \\u2014 a hard zero after softmax \\u2014 while the flattest subtracts 3.9, about one e-fold of down-weighting. That spread across heads is why a 1024-trained ALiBi model still holds perplexity past 2048, where learned absolute embeddings have no values to use at all.",
-    "interview_question": "Your model must serve documents up to 3\\u00d7 the training length with no fine-tuning budget. Argue for or against ALiBi over RoPE, and explain what the per-head slope schedule actually buys you.",
+    "concept": "No positional embedding at all. A fixed, non-learned linear penalty is subtracted from each attention logit in proportion to the distance between query i and key j. Head h gets its own slope m_h from a geometric sequence, so with n heads the slopes span 2^(−8/n) down to 2^−8. Small-slope heads see almost globally, large-slope heads behave as local windows. Nothing is added to Q, K, or the residual stream, so the penalty extends to any length for free.",
+    "example": "With n=16 heads the slopes run from 2^(−0.5) = 0.71 down to 2^−8 = 0.0039. At a distance of 1000 tokens the sharpest head subtracts 710 from its logit — a hard zero after softmax — while the flattest subtracts 3.9, about one e-fold of down-weighting. That spread across heads is why a 1024-trained ALiBi model still holds perplexity past 2048, where learned absolute embeddings have no values to use at all.",
+    "interview_question": "Your model must serve documents up to 3× the training length with no fine-tuning budget. Argue for or against ALiBi over RoPE, and explain what the per-head slope schedule actually buys you.",
     "answer_points": [
       "The bias is fixed and content-independent, added to logits pre-softmax, so there are no positional parameters that can go out of distribution",
-      "Geometric slopes give a head-wise mixture of receptive fields \\u2014 multi-scale local and global attention for free",
+      "Geometric slopes give a head-wise mixture of receptive fields — multi-scale local and global attention for free",
       "The extrapolation is real but comes from recency bias, so it helps perplexity more than genuine long-range retrieval; test on needle-in-a-haystack, not just perplexity",
       "The bias matrix is dense and length-dependent, so it fights fused kernels: FlashAttention needs an ALiBi-aware variant, whereas RoPE is applied to Q and K before the kernel and costs it nothing"
     ],
@@ -179,14 +179,14 @@
     "topic": "LayerNorm",
     "difficulty": "hard",
     "formula": "\\begin{gathered} y = \\gamma \\odot \\frac{x - \\mu}{\\sqrt{\\sigma^{2} + \\epsilon}} + \\beta \\\\[3pt] \\mu = \\frac{1}{d}\\sum_{i} x_i, \\qquad \\sigma^{2} = \\frac{1}{d}\\sum_{i}(x_i - \\mu)^{2} \\end{gathered}",
-    "concept": "Statistics are taken across the feature dimension of a single token, never across the batch \\u2014 that is what makes it independent of batch size and sequence length, and what lets it behave identically at batch 1 during decoding. \\u03b3 and \\u03b2 restore the ability to express a non-zero-mean, non-unit-variance activation. \\u03b5 sits inside the square root and is typically 1e-5; placing it outside is a classic bug that surfaces in fp16 when \\u03c3\\u00b2 is small.",
-    "example": "GPT-3 d_model=12288: 2\\u00b712288 = 24576 params per LayerNorm, 2 per block, 96 blocks \\u2014 4.7M params, 0.003% of 175B. The backward pass, though, needs dL/dy, x\\u0302 and two reductions over d, touching roughly 4\\u00d7 the activation tensor. At batch 8 \\u00d7 2048 tokens \\u00d7 12288 in fp16 one activation tensor is 402 MB, so a single LayerNorm moves about 1.6 GB of HBM per step. That gap is why fusing it matters far more than its parameter count suggests.",
-    "interview_question": "Derive dL/dx for LayerNorm, then explain why the naive autograd version is memory-bound while a fused kernel is not \\u2014 and what changes if you move the norm from post- to pre-residual.",
+    "concept": "Statistics are taken across the feature dimension of a single token, never across the batch — that is what makes it independent of batch size and sequence length, and what lets it behave identically at batch 1 during decoding. γ and β restore the ability to express a non-zero-mean, non-unit-variance activation. ε sits inside the square root and is typically 1e-5; placing it outside is a classic bug that surfaces in fp16 when σ² is small.",
+    "example": "GPT-3 d_model=12288: 2·12288 = 24576 params per LayerNorm, 2 per block, 96 blocks — 4.7M params, 0.003% of 175B. The backward pass, though, needs dL/dy, x̂ and two reductions over d, touching roughly 4× the activation tensor. At batch 8 × 2048 tokens × 12288 in fp16 one activation tensor is 402 MB, so a single LayerNorm moves about 1.6 GB of HBM per step. That gap is why fusing it matters far more than its parameter count suggests.",
+    "interview_question": "Derive dL/dx for LayerNorm, then explain why the naive autograd version is memory-bound while a fused kernel is not — and what changes if you move the norm from post- to pre-residual.",
     "answer_points": [
-      "dL/dx = (\\u03b3/\\u03c3)\\u00b7[dL/dy \\u2212 mean(dL/dy) \\u2212 x\\u0302\\u00b7mean(dL/dy\\u00b7x\\u0302)]; the two mean terms appear because \\u03bc and \\u03c3 each depend on every x_i",
-      "That is two reductions over d plus elementwise work \\u2014 naive autograd materialises every intermediate to HBM, so it is bandwidth-bound and fusion collapses four tensor round-trips into one",
+      "dL/dx = (γ/σ)·[dL/dy − mean(dL/dy) − x̂·mean(dL/dy·x̂)]; the two mean terms appear because μ and σ each depend on every x_i",
+      "That is two reductions over d plus elementwise work — naive autograd materialises every intermediate to HBM, so it is bandwidth-bound and fusion collapses four tensor round-trips into one",
       "Pre-LN puts the norm inside the residual branch, leaving the identity path unnormalised so gradients reach layer 0 unattenuated and warmup becomes optional; Post-LN diverges at depth without careful warmup",
-      "\\u03b5 must be inside the sqrt, and in fp16 the mean and variance reductions must accumulate in fp32 or \\u03c3\\u00b2 underflows on near-zero activations"
+      "ε must be inside the sqrt, and in fp16 the mean and variance reductions must accumulate in fp32 or σ² underflows on near-zero activations"
     ],
     "tags": [
       "normalization",
@@ -203,13 +203,13 @@
     "topic": "RMSNorm",
     "difficulty": "mid",
     "formula": "y = \\gamma \\odot \\frac{x}{\\mathrm{RMS}(x)}, \\qquad \\mathrm{RMS}(x) = \\sqrt{\\frac{1}{d}\\sum_{i=1}^{d} x_i^{2} + \\epsilon}",
-    "concept": "Drops both the mean subtraction and the \\u03b2 shift, leaving only re-scaling. The bet is that LayerNorm's benefit comes from scale invariance rather than re-centring, and empirically that holds. The result is one reduction instead of two dependent ones, one learnable vector instead of two, and no \\u03bc to keep for the backward pass \\u2014 cheaper in traffic and in registers. Every major open model since LLaMA has used it.",
-    "example": "LLaMA-2 7B: d_model=4096, so 4096 params per norm against LayerNorm's 8192; at 2 per block over 32 blocks that is 262k versus 524k params, negligible either way. The real win is the kernel: \\u03a3x\\u00b2 is a single reduction, whereas LayerNorm cannot start \\u03c3\\u00b2 until \\u03bc is finished \\u2014 two dependent block-wide syncs per 4096-wide row. Meta kept RMSNorm through LLaMA-3 405B for exactly that reason.",
+    "concept": "Drops both the mean subtraction and the β shift, leaving only re-scaling. The bet is that LayerNorm's benefit comes from scale invariance rather than re-centring, and empirically that holds. The result is one reduction instead of two dependent ones, one learnable vector instead of two, and no μ to keep for the backward pass — cheaper in traffic and in registers. Every major open model since LLaMA has used it.",
+    "example": "LLaMA-2 7B: d_model=4096, so 4096 params per norm against LayerNorm's 8192; at 2 per block over 32 blocks that is 262k versus 524k params, negligible either way. The real win is the kernel: Σx² is a single reduction, whereas LayerNorm cannot start σ² until μ is finished — two dependent block-wide syncs per 4096-wide row. Meta kept RMSNorm through LLaMA-3 405B for exactly that reason.",
     "interview_question": "RMSNorm removes mean-centring and the bias term, yet quality holds. Explain what invariance the normalisation is actually providing, then describe a regime where dropping the centring would hurt you.",
     "answer_points": [
       "The property that matters is invariance to rescaling of the input row; re-centring is not what stabilises training",
-      "One reduction instead of two dependent ones, no \\u03bc stored for backward, one learnable vector instead of two",
-      "With no \\u03b2, any needed offset must come from the following linear layer \\u2014 models that also drop biases lean on the residual stream to carry it",
+      "One reduction instead of two dependent ones, no μ stored for backward, one learnable vector instead of two",
+      "With no β, any needed offset must come from the following linear layer — models that also drop biases lean on the residual stream to carry it",
       "If activations carry a large shared DC component, RMS is dominated by that offset and the normalised output loses dynamic range; this is part of why RMSNorm models are sensitive to outlier channels and why schemes like SmoothQuant target exactly those"
     ],
     "tags": [
@@ -227,12 +227,12 @@
     "topic": "SwiGLU",
     "difficulty": "mid",
     "formula": "\\begin{gathered} \\text{SwiGLU}(x) = \\big(\\mathrm{SiLU}(xW_{\\text{gate}}) \\odot xW_{1}\\big)W_{2} \\\\[3pt] \\mathrm{SiLU}(z) = z\\,\\sigma(z) \\end{gathered}",
-    "concept": "A gated linear unit: one projection produces values, a second produces a multiplicative gate passed through SiLU, and their elementwise product is projected back down. The gate lets the layer suppress or pass each hidden unit conditionally on the input, which a plain ReLU or GELU MLP cannot do. The cost is three weight matrices instead of two, so the hidden width is cut to 8/3\\u00b7d_model to keep the parameter count level with a 4\\u00d7 ReLU FFN.",
-    "example": "LLaMA-2 7B, d_model=4096. A 4\\u00d7 ReLU FFN would be 2\\u00b74096\\u00b716384 = 134M params per layer. SwiGLU uses hidden = 8/3\\u00b74096 = 10923, rounded up to 11008 for alignment, over three matrices: 3\\u00b74096\\u00b711008 = 135M \\u2014 the same budget. Across 32 layers that is 4.3B of the model's 6.7B, against 2.15B in attention, so the FFN is where most of a modern 7B actually lives.",
-    "interview_question": "Given a fixed parameter budget for the FFN block, derive the hidden width that makes SwiGLU parameter-neutral against a 4\\u00d7 ReLU MLP, then justify whether you would spend the budget there at all.",
+    "concept": "A gated linear unit: one projection produces values, a second produces a multiplicative gate passed through SiLU, and their elementwise product is projected back down. The gate lets the layer suppress or pass each hidden unit conditionally on the input, which a plain ReLU or GELU MLP cannot do. The cost is three weight matrices instead of two, so the hidden width is cut to 8/3·d_model to keep the parameter count level with a 4× ReLU FFN.",
+    "example": "LLaMA-2 7B, d_model=4096. A 4× ReLU FFN would be 2·4096·16384 = 134M params per layer. SwiGLU uses hidden = 8/3·4096 = 10923, rounded up to 11008 for alignment, over three matrices: 3·4096·11008 = 135M — the same budget. Across 32 layers that is 4.3B of the model's 6.7B, against 2.15B in attention, so the FFN is where most of a modern 7B actually lives.",
+    "interview_question": "Given a fixed parameter budget for the FFN block, derive the hidden width that makes SwiGLU parameter-neutral against a 4× ReLU MLP, then justify whether you would spend the budget there at all.",
     "answer_points": [
-      "Three d\\u00d7h matrices versus two d\\u00d74d matrices: 3dh = 8d\\u00b2 gives h = 8/3\\u00b7d",
-      "In practice h is rounded to a multiple of 256 \\u2014 11008 for LLaMA-2 7B \\u2014 so the GEMM tiles cleanly on tensor cores",
+      "Three d×h matrices versus two d×4d matrices: 3dh = 8d² gives h = 8/3·d",
+      "In practice h is rounded to a multiple of 256 — 11008 for LLaMA-2 7B — so the GEMM tiles cleanly on tensor cores",
       "The gate is the actual mechanism: a multiplicative interaction, not merely a different nonlinearity",
       "The extra matrix costs a third GEMM and another activation tensor, so SwiGLU is slightly worse for memory-bound decode even at equal parameters; gate and up are usually fused into one 2h-wide GEMM to claw that back"
     ],
@@ -438,10 +438,10 @@
     "source_link": "https://arxiv.org/abs/2305.18290"
   },
   {
-    "id": "inference-symmetric-int8-063",
+    "id": "quantization-symmetric-int8-001",
     "type": "formula",
     "stage": "S11",
-    "category": "inference",
+    "category": "quantization",
     "topic": "Symmetric INT8",
     "difficulty": "hard",
     "formula": "\\begin{gathered} s = \\frac{\\max|x|}{127}, \\qquad \\hat{x} = s\\,q \\\\[3pt] q = \\mathrm{clip}\\!\\big(\\mathrm{round}(x/s),\\, -127,\\, 127\\big) \\end{gathered}",
@@ -462,10 +462,10 @@
     "source_link": "https://arxiv.org/abs/2211.10438"
   },
   {
-    "id": "inference-spec-decoding-speedup-064",
+    "id": "decoding-spec-decoding-speedup-001",
     "type": "formula",
     "stage": "I7",
-    "category": "inference",
+    "category": "decoding",
     "topic": "Spec Decoding Speedup",
     "difficulty": "hard",
     "formula": "\\mathbb{E}[\\text{speedup}] = \\frac{1 - \\alpha^{\\,k+1}}{(1 - \\alpha)\\,(1 + k c)}",
@@ -486,10 +486,10 @@
     "source_link": "https://arxiv.org/abs/2211.17192"
   },
   {
-    "id": "inference-arithmetic-intensity-065",
+    "id": "gpu-arch-arithmetic-intensity-001",
     "type": "formula",
     "stage": "I1",
-    "category": "inference",
+    "category": "gpu-arch",
     "topic": "Arithmetic Intensity",
     "difficulty": "hard",
     "formula": "\\begin{gathered} AI = \\frac{\\text{FLOPs}}{\\text{bytes moved}} \\\\[3pt] \\text{compute-bound} \\iff AI > AI_{\\text{ridge}} = \\frac{\\text{peak FLOP/s}}{\\text{peak bandwidth}} \\end{gathered}",
@@ -510,10 +510,10 @@
     "source_link": "https://arxiv.org/abs/2007.00072"
   },
   {
-    "id": "inference-llm-decode-tpot-066",
+    "id": "inference-math-llm-decode-tpot-001",
     "type": "formula",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "LLM Decode TPOT",
     "difficulty": "hard",
     "formula": "\\begin{gathered} \\text{TPOT} \\approx \\frac{\\text{bytes}_{\\text{weights}} + \\text{bytes}_{\\text{KV read}}}{\\text{TP} \\cdot \\text{BW}_{\\text{GPU}}} \\\\[3pt] \\text{E2E} = \\text{TTFT} + (N_{\\text{out}} - 1)\\,\\text{TPOT} \\end{gathered}",
@@ -535,10 +535,10 @@
     "source_link": "https://arxiv.org/abs/2211.05102"
   },
   {
-    "id": "inference-llm-prefill-ttft-067",
+    "id": "inference-math-llm-prefill-ttft-002",
     "type": "formula",
     "stage": "I2",
-    "category": "inference",
+    "category": "inference-math",
     "topic": "LLM Prefill TTFT",
     "difficulty": "hard",
     "formula": "\\begin{gathered} \\text{TTFT} \\approx \\frac{2\\,N_{\\text{params}}\\,S}{\\text{FLOP/s}_{\\text{eff}}} \\approx \\frac{12\\,L\\,d^{2}\\,S}{\\text{FLOP/s}_{\\text{eff}}} \\\\[3pt] \\text{FLOP/s}_{\\text{eff}} = \\text{peak} \\times \\text{MFU} \\end{gathered}",
@@ -560,10 +560,10 @@
     "source_link": "https://arxiv.org/abs/2308.16369"
   },
   {
-    "id": "inference-fa-io-complexity-068",
+    "id": "attention-kernels-fa-io-complexity-001",
     "type": "formula",
     "stage": "I4",
-    "category": "inference",
+    "category": "attention-kernels",
     "topic": "FA IO complexity",
     "difficulty": "hard",
     "formula": "\\begin{gathered} \\text{FlashAttention:}\\ \\ \\Theta\\!\\left(\\frac{N^{2} d^{2}}{M}\\right)\\ \\text{HBM accesses} \\\\[3pt] \\text{standard:}\\ \\ \\Theta\\!\\left(N d + N^{2}\\right) \\end{gathered}",
