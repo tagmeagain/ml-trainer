@@ -16,3 +16,6 @@ venv/
 
 # OS
 .DS_Store
+
+# The prep tracker is private source material. Never commit it.
+tracker/
