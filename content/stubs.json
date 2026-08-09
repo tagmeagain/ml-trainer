@@ -640,14 +640,6 @@
     "_source": "Theory: TTFT (time-to-first-token) = prefill latency, user-perceived responsiveness. TPOT / ITL (inter-token latency) = per-token decode latency, streaming smoothness. E2E latency = TTFT + (G-1)·TPOT. Throughput = tokens/sec across all requests. Goodput = throughput that meets SLO. Why optimizing throughput can hurt TTFT (batching tradeoff).\nMath: Write E2E = TTFT + (N_out-1)·TPOT. For TTFT SLO 500ms, TPOT SLO 50ms, 200 output tokens → E2E budget ≈ 10.5s. Show how batch size trades TTFT vs throughput.\nCode: Implement a latency calculator: given TTFT, TPOT, output length → E2E; and given per-request latencies + SLOs → goodput fraction.\nDeliverable: latency_metrics.py"
   },
   {
-    "id": "inference-math-the-central-dichotomy-compute-bound-vs-memory-bound-005",
-    "type": "concept",
-    "stage": "I0",
-    "category": "inference-math",
-    "topic": "The central dichotomy: compute-bound vs memory-bound",
-    "_source": "Theory: The single most important idea in inference. Prefill = compute-bound (lots of matmul, high arithmetic intensity). Decode with batch=1 = memory-bandwidth-bound (you stream all weights from HBM to generate ONE token → GPU compute sits idle). This is why decode throughput scales with batching and with quantization, not with more FLOPs.\nMath: Arithmetic intensity AI = FLOPs / bytes_accessed. Show decode batch=1 AI ≈ 0.5 (way below the ridge) → memory-bound. Show prefill AI ≈ S/2 → compute-bound above some S.\nCode: — (write the 2-sentence explanation you'd give an interviewer for 'why is LLM decoding slow?')\nDeliverable: 60s 'why decode is slow' answer"
-  },
-  {
     "id": "gpu-arch-gpu-anatomy-sms-tensor-cores-warps-002",
     "type": "concept",
     "stage": "I1",
@@ -670,14 +662,6 @@
     "category": "gpu-arch",
     "topic": "Roofline model + arithmetic intensity",
     "_source": "Theory: Roofline: performance is min(peak_FLOPS, AI × peak_bandwidth). The 'ridge point' = peak_FLOPS / peak_BW separates memory-bound (left) from compute-bound (right). A100 ridge ≈ 312 TFLOPS / 2 TB/s = 156 FLOPs/byte. Anything with AI below 156 is memory-bound on A100. This one plot explains all inference optimization.\nMath: Compute ridge point for A100 (156) and H100 (~1000 TFLOPS / 3.35 TB/s ≈ 300 FLOPs/byte). Plot where prefill and decode land on the roofline.\nCode: Build a roofline_analyzer(flops, bytes, peak_flops, peak_bw) → bound type + achievable FLOPS. Verify it flags decode as memory-bound.\nDeliverable: roofline.py + plot"
-  },
-  {
-    "id": "gpu-arch-utilization-mfu-vs-mbu-005",
-    "type": "concept",
-    "stage": "I1",
-    "category": "gpu-arch",
-    "topic": "Utilization: MFU vs MBU",
-    "_source": "Theory: MFU (Model FLOPs Utilization) = achieved FLOPs / peak FLOPs — the right metric for compute-bound prefill/training. MBU (Model Bandwidth Utilization) = achieved BW / peak BW — the right metric for memory-bound decode. Why reporting MFU for decode is misleading. Typical real MFU 30-50%, MBU 60-80%.\nMath: Given tokens/sec and model size, back out MBU = (params·bytes·tokens_per_sec)/peak_BW. Compute MBU for 7B fp16 at 140 tok/s on A100.\nCode: — (add MFU/MBU output to your roofline tool)\nDeliverable: MFU/MBU notes"
   },
   {
     "id": "gpu-arch-numeric-formats-fp32-tf32-fp16-bf16-fp8-int8-int4-006",
@@ -744,22 +728,6 @@
     "_source": "Theory: Multi-Query Attention: all query heads share ONE K,V head → KV cache shrinks by factor H. Grouped-Query Attention: G groups → shrink by H/G, a quality/memory compromise (LLaMA-2/3 use GQA). This directly raises max batch size and context length. Why quality holds up.\nMath: KV reduction factor MQA = H; GQA = H/G. LLaMA-2 70B: 64 Q heads, 8 KV heads → 8× smaller KV cache vs full MHA.\nCode: Modify MHA so num_kv_heads ≠ num_heads; repeat_interleave K,V to match Q. Verify shapes + the memory saving.\nDeliverable: gqa.py + memory calc"
   },
   {
-    "id": "kv-cache-kv-cache-quantization-005",
-    "type": "concept",
-    "stage": "I3",
-    "category": "kv-cache",
-    "topic": "KV cache quantization",
-    "_source": "Theory: Store the cache in INT8/FP8 instead of fp16 → 2× more context/batch for a small accuracy hit. Per-channel/per-token scales. Asymmetric for the outlier-heavy K. When it's worth it (long context, high concurrency). Tradeoffs vs GQA (they compose).\nMath: Show KV quant halves KV bytes; recompute max concurrency for the 70B case with INT8 KV.\nCode: Quantize the cache to INT8 in your decode path (fake-quant); measure accuracy delta on a short generation.\nDeliverable: kv_quant.py"
-  },
-  {
-    "id": "kv-cache-pagedattention-fragmentation-block-table-cow-006",
-    "type": "concept",
-    "stage": "I3",
-    "category": "kv-cache",
-    "topic": "PagedAttention — fragmentation, block table, CoW",
-    "_source": "Theory: Traditional KV cache pre-allocates max_seq per request → ~60-80% wasted memory from internal + external fragmentation. PagedAttention (vLLM) stores KV in fixed-size blocks (e.g. 16 tokens) mapped by a block table (virtual→physical, like OS paging). Waste ≤ block_size-1 tokens → 95%+ utilization. Copy-on-write enables prompt/beam sharing.\nMath: Draw a block table for 3 sequences (lengths 35, 20, 45; block=16). Show waste = block_size-1 per seq. Compute utilization gain vs pre-allocation.\nCode: Simulate a BlockAllocator: allocate/free/copy_on_write for 5 sequences (len 10-100, block=16). Verify no two seqs share a physical block except under CoW.\nDeliverable: block_allocator.py + diagram"
-  },
-  {
     "id": "attention-kernels-flashattention-io-complexity-online-softmax-002",
     "type": "concept",
     "stage": "I4",
@@ -774,46 +742,6 @@
     "category": "attention-kernels",
     "topic": "FlashAttention v1/v2/v3 + backward",
     "_source": "Theory: v1: tiling + recomputation in backward (trade compute for memory). v2: better work partitioning across warps, fewer non-matmul ops, ~2× faster. v3: Hopper async (TMA, warp-specialization, FP8). Why FA made long context practical. Backward pass recomputes the forward stats instead of storing them.\nCode: — (one-paragraph 'what each FA version improved' + backward-recompute sketch)\nDeliverable: FA versions notes"
-  },
-  {
-    "id": "attention-kernels-chunked-prefill-004",
-    "type": "concept",
-    "stage": "I4",
-    "category": "attention-kernels",
-    "topic": "Chunked prefill",
-    "_source": "Theory: Long prompts make prefill a latency spike that blocks decode requests (head-of-line blocking). Chunked prefill splits a long prompt into chunks and interleaves them with ongoing decode steps in the same batch → smoother TPOT, better GPU utilization, tunable TTFT/throughput. Default in modern vLLM.\nMath: Show how a 4096-token prefill split into 512-token chunks lets decode requests progress between chunks; estimate the TPOT jitter reduction.\nCode: — (scheduling diagram: monolithic vs chunked prefill interleaved with decode)\nDeliverable: Chunked-prefill diagram"
-  },
-  {
-    "id": "batching-static-vs-dynamic-vs-continuous-iteration-level-batching-001",
-    "type": "concept",
-    "stage": "I5",
-    "category": "batching",
-    "topic": "Static vs dynamic vs continuous (iteration-level) batching",
-    "_source": "Theory: Static batching: wait to fill a batch, all finish together → padding + head-of-line waste. Dynamic batching: pad to the longest in a time window. Continuous (iteration-level) batching (Orca/vLLM): the scheduler re-forms the batch EVERY decode step — finished sequences leave, new ones join immediately. Huge throughput win on ragged workloads.\nMath: Estimate GPU-utilization gain of continuous vs static batching for a batch with high length variance (idle-slot elimination). Show why static wastes on the longest sequence.\nCode: Simulate a continuous-batching loop: admit new requests each iteration, run 1 decode step per active seq, evict finished, respect a KV-block budget. Log batch occupancy over time.\nDeliverable: cont_batch_sim.py"
-  },
-  {
-    "id": "batching-scheduler-internals-queues-preemption-swap-vs-recompute-002",
-    "type": "concept",
-    "stage": "I5",
-    "category": "batching",
-    "topic": "Scheduler internals: queues, preemption, swap vs recompute",
-    "_source": "Theory: vLLM-style scheduler: waiting / running / swapped queues. When KV memory is full it PREEMPTS lower-priority sequences — either swap their KV to CPU (copy back later) or recompute (drop KV, redo prefill on resume). FCFS vs priority. Admission control to protect SLOs. Starvation avoidance.\nMath: Compare swap (extra PCIe bandwidth, keep KV) vs recompute (extra FLOPs, free KV) cost; give the rule of thumb for when each wins.\nCode: Extend your scheduler sim with a KV budget that triggers preemption; implement both swap and recompute strategies and compare.\nDeliverable: scheduler_sim.py"
-  },
-  {
-    "id": "batching-prefix-caching-kv-reuse-radixattention-003",
-    "type": "concept",
-    "stage": "I5",
-    "category": "batching",
-    "topic": "Prefix caching / KV reuse / RadixAttention",
-    "_source": "Theory: Reuse the KV of a shared prompt prefix (system prompt, few-shot examples, chat history) across requests instead of recomputing prefill → big TTFT + throughput win for repeated prefixes. SGLang's RadixAttention stores KV in a radix tree keyed by token prefix; LRU eviction. Automatic in vLLM's prefix caching.\nMath: For a 2000-token system prompt shared by 1000 requests, compute prefill FLOPs saved by caching the prefix once.\nCode: Implement a radix/trie prefix cache: insert token sequences, match longest cached prefix, LRU-evict. Verify a repeated prefix hits the cache.\nDeliverable: prefix_cache.py"
-  },
-  {
-    "id": "batching-prefill-decode-disaggregation-004",
-    "type": "concept",
-    "stage": "I5",
-    "category": "batching",
-    "topic": "Prefill-decode disaggregation",
-    "_source": "Theory: Prefill (compute-bound) and decode (memory-bound) contend for the same GPU and interfere. Disaggregation (Splitwise, DistServe) runs prefill on one pool of GPUs and decode on another, transferring the KV cache between them → each pool tuned for its regime, better goodput. The cost: KV transfer bandwidth.\nMath: Sketch the KV-transfer cost between prefill and decode nodes; show when disaggregation beats co-location (high prefill/decode interference).\nCode: — (architecture diagram: disaggregated prefill and decode pools + KV transfer)\nDeliverable: Disagg diagram"
   },
   {
     "id": "batching-goodput-slo-aware-scheduling-005",
@@ -854,14 +782,6 @@
     "category": "decoding",
     "topic": "Sampling recap: greedy / top-k / top-p / temperature",
     "_source": "Theory: How each shapes the output distribution and why it matters for latency (they're cheap, but repetition penalties and large vocabs add up). Temperature scaling, nucleus (top-p) sampling, top-k, min-p. Determinism (temp→0 ≈ greedy). Batched sampling on GPU.\nCode: top_k_sample, top_p_sample with temperature; verify temp=0.01 ≈ greedy, temp=2.0 chaotic. Build generate().\nDeliverable: sampling.py"
-  },
-  {
-    "id": "decoding-speculative-decoding-draft-target-accept-reject-003",
-    "type": "concept",
-    "stage": "I7",
-    "category": "decoding",
-    "topic": "Speculative decoding — draft + target, accept/reject",
-    "_source": "Theory: A small fast DRAFT model proposes k tokens; the big TARGET verifies them in ONE forward pass; a rejection-sampling rule accepts a prefix that provably preserves the target distribution. Turns memory-bound decode into fewer, denser target passes → 2-3× speedup with no quality loss. Speedup depends on acceptance rate α and draft cost.\nMath: Prove min(1, q(t)/p(t)) acceptance keeps the target distribution. E[speedup] = ((1-α^(k+1))/(1-α)) / (1+k·c). Compute for α=0.8, k=4, c=0.1 → ~3×.\nCode: Implement accept/reject speculative sampling; verify output distribution matches the target (KL < 0.01 over 10k samples).\nDeliverable: spec_decode.py + KL test"
   },
   {
     "id": "decoding-advanced-speculation-medusa-eagle-lookahead-n-gram-004",

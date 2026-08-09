@@ -1181,5 +1181,253 @@
       "activation-memory"
     ],
     "source_link": "https://arxiv.org/abs/2205.14135"
+  },
+  {
+    "id": "inference-math-the-central-dichotomy-compute-bound-vs-memory-bound-005",
+    "type": "concept",
+    "stage": "I0",
+    "category": "inference-math",
+    "topic": "Compute-bound vs memory-bound",
+    "difficulty": "mid",
+    "formula": "\\text{AI} = \\frac{\\text{FLOPs}}{\\text{bytes moved}}, \\qquad \\text{AI}_{\\text{ridge}} = \\frac{\\text{peak FLOP/s}}{\\text{peak BW}}",
+    "concept": "Arithmetic intensity is FLOPs divided by bytes moved from HBM. Compare it to the machine's ridge point — peak FLOP/s over peak bandwidth — and you know which resource you are actually spending. Prefill multiplies a whole prompt through every weight, so each byte fetched does S rows of work and intensity is high. Decode at batch 1 streams every weight from HBM to produce a single token, so intensity is roughly 1 and the tensor cores idle. This is why decode gets faster from batching and from quantization, which cut bytes, and barely responds to a chip with more FLOP/s.",
+    "example": "7B fp16 on an A100-80GB: weights are 14 GB, peak BW 2.04 TB/s, peak bf16 312 TFLOP/s. Ridge point is 312e12/2.04e12 = 153 FLOP/byte. One decode step at batch 1 does 2N = 14 GFLOP and moves 14 GB, so AI = 1.0 FLOP/byte — 153x below the ridge. The bandwidth floor is 14 GB / 2.04 TB/s = 6.9 ms per token, a ceiling of 146 tok/s no matter what. The same step needs only 14e9/312e12 = 0.045 ms of compute.",
+    "interview_question": "Your 7B service does 140 tok/s at batch 1 and someone proposes moving to a GPU with twice the FLOP/s and the same memory bandwidth. What do you tell them, and what would you buy instead?",
+    "answer_points": [
+      "Decode at batch 1 has AI near 1 against a ridge of 153, so it is bandwidth bound — doubling FLOP/s changes nothing measurable",
+      "140 tok/s is already 96% of the 146 tok/s bandwidth ceiling, so there is almost nothing left to win at this batch size",
+      "Spend on bandwidth (HBM3), on fewer bytes (INT8/FP8 weights), or on batching — which raises AI linearly because one weight fetch serves B tokens",
+      "Prefill is the opposite regime: AI ~ S/2, genuinely compute bound, so the same purchase would help TTFT on long prompts",
+      "The subtlety most people miss: 'memory bound' here means weight streaming at small batch, and the bottleneck migrates to KV-cache reads as batch and context grow"
+    ],
+    "tags": [
+      "roofline",
+      "arithmetic-intensity",
+      "prefill",
+      "decode"
+    ]
+  },
+  {
+    "id": "gpu-arch-utilization-mfu-vs-mbu-005",
+    "type": "concept",
+    "stage": "I1",
+    "category": "gpu-arch",
+    "topic": "MFU vs MBU",
+    "difficulty": "mid",
+    "formula": "\\text{MBU} = \\frac{P \\cdot b \\cdot \\text{tok/s}}{\\text{peak BW}}, \\qquad \\text{MFU} = \\frac{\\text{achieved FLOP/s}}{\\text{peak FLOP/s}}",
+    "concept": "Two utilisation numbers, each valid in one regime. MFU is achieved FLOP/s over peak and is the honest metric for training and prefill, where the tensor cores are the constraint. MBU is achieved bandwidth over peak — parameter count times bytes per parameter times tokens per second — and is the honest metric for decode, where HBM is the constraint. Quoting MFU for a decode benchmark makes a well-tuned server look broken, because a memory-bound kernel cannot use the FLOPs by definition. An MBU above 100% is not a triumph, it is a sign the arithmetic is wrong.",
+    "example": "7B fp16 on an A100-80GB at 100 tok/s, batch 1: MBU = 7e9 x 2 bytes x 100 / 2.04e12 = 1.4/2.04 = 69%. The same run's MFU is 2 x 7e9 x 100 = 1.4 TFLOP/s against 312, or 0.45%. One run, 69% and 0.45%, and only the first means anything. Note that the stated 140 tok/s would imply 96% MBU — near the theoretical roof, so treat any figure above that as a measurement error rather than a result.",
+    "interview_question": "A colleague reports 4% MFU on your production decode server and opens a performance bug. Talk them out of it, and tell them what number to bring instead.",
+    "answer_points": [
+      "Decode is bandwidth bound, so low MFU is the expected state, not a defect — the FLOPs are unusable at AI ~ 1",
+      "The right metric is MBU = P x bytes x tok/s / peak BW; 60-80% is a healthy decode server",
+      "Real training and prefill MFU is 30-50%, so even in the compute-bound regime 100% was never the target",
+      "MBU over 100% means the arithmetic is wrong — usually forgetting GQA shrinks KV reads, or counting a quantized model at fp16 bytes",
+      "The one people miss: MBU as written counts weight traffic only, so at large batch or long context you must add KV-cache bytes or the number quietly understates real traffic"
+    ],
+    "tags": [
+      "mfu",
+      "mbu",
+      "utilization",
+      "roofline"
+    ]
+  },
+  {
+    "id": "batching-static-vs-dynamic-vs-continuous-iteration-level-batching-001",
+    "type": "concept",
+    "stage": "I5",
+    "category": "batching",
+    "topic": "Static vs continuous batching",
+    "difficulty": "mid",
+    "concept": "Static batching fills a batch, runs it to completion, and returns together: every sequence occupies a slot until the longest one finishes, so a batch with ragged lengths burns most of its slot-steps on padding. Dynamic batching only widens the admission window and pads to the longest in it, which reduces waiting but not the padding waste. Continuous, or iteration-level, batching re-forms the batch at every decode step — a finished sequence leaves immediately and a waiting request takes its slot on the next iteration. Since decode is bandwidth bound, filling those slots is close to free throughput.",
+    "example": "Eight requests generating 32, 64, 96, 128, 256, 384, 448 and 512 tokens. Useful work is the sum, 1920 token-steps. Static batching runs 8 x 512 = 4096 slot-steps, so utilisation is 1920/4096 = 47% and more than half the GPU time produces padding. Continuous batching retires each sequence at its own length and admits the next, holding utilisation near 100% on the same hardware — roughly a 2.1x throughput gain purely from scheduling, with no kernel change.",
+    "interview_question": "Throughput on your server is half what the roofline predicts, GPU utilisation reads 95%, and p50 latency looks fine. Where do you look first?",
+    "answer_points": [
+      "High GPU utilisation says the SMs are busy, not that the work is useful — padded slots in a static batch are busy and worthless",
+      "Compute the ratio of generated tokens to batch_size x max_length; anything near 50% on a ragged workload points straight at static batching",
+      "Continuous batching retires and admits per iteration, so waste falls to at most one step per sequence rather than the tail of the longest",
+      "The win scales with length variance: a workload where every request generates the same length gains nothing, which is why synthetic benchmarks hide the problem",
+      "The catch most people miss: prefill of a newly admitted request still lands inside a decode step and spikes TPOT for everyone, which is what chunked prefill exists to fix"
+    ],
+    "tags": [
+      "batching",
+      "continuous-batching",
+      "vllm",
+      "throughput"
+    ]
+  },
+  {
+    "id": "kv-cache-pagedattention-fragmentation-block-table-cow-006",
+    "type": "concept",
+    "stage": "I3",
+    "category": "kv-cache",
+    "topic": "PagedAttention",
+    "difficulty": "hard",
+    "concept": "A naive server reserves KV for max_seq_len at admission because the cache must be contiguous, so a request that generates 40 tokens holds the space for 2048. PagedAttention borrows OS paging: KV lives in fixed-size blocks, typically 16 tokens, and a per-sequence block table maps logical positions to physical blocks. Blocks are allocated on demand and need not be adjacent, so internal waste is at most block_size-1 tokens per sequence and external fragmentation disappears. Because the mapping is indirect, two sequences can point at the same physical block, which makes shared prompts and beam search copy-on-write.",
+    "example": "Three sequences of 35, 20 and 45 tokens with block_size=16 need 3, 2 and 3 blocks — 8 blocks, 128 slots for 100 live tokens, 78% utilisation, with waste bounded at 15 tokens each. Pre-allocating max_seq_len=2048 per sequence would reserve 6144 slots for the same 100 tokens: 1.6% utilisation. On a 70B GQA-8 model at 4096 context where each sequence's cache is 10.5 GB, that difference is the whole reason a node serves dozens of concurrent requests instead of two.",
+    "interview_question": "You raise max_model_len from 4096 to 32768 to support a handful of long-document requests, and overall throughput collapses even though almost every request is still short. Explain the mechanism and the fix.",
+    "answer_points": [
+      "With contiguous pre-allocation the reservation is max_model_len regardless of actual length, so an 8x larger cap cuts concurrency ~8x for every request",
+      "PagedAttention allocates in 16-token blocks on demand, so a 200-token request costs 13 blocks whatever the cap is set to",
+      "Waste per sequence is bounded by block_size-1 instead of max_len minus actual length — the cap stops being a capacity decision",
+      "The block table adds an indirection per attention step, which is why it needs a custom kernel rather than plain cuBLAS",
+      "The part usually missed: copy-on-write on shared blocks makes a common system prompt or beam-search fan-out nearly free, which is a second, separate win from the fragmentation fix"
+    ],
+    "tags": [
+      "pagedattention",
+      "vllm",
+      "kv-cache",
+      "fragmentation"
+    ],
+    "source_link": "https://arxiv.org/abs/2309.06180"
+  },
+  {
+    "id": "batching-scheduler-internals-queues-preemption-swap-vs-recompute-002",
+    "type": "concept",
+    "stage": "I5",
+    "category": "batching",
+    "topic": "Preemption: swap vs recompute",
+    "difficulty": "hard",
+    "concept": "A vLLM-style scheduler keeps waiting, running and swapped queues. KV memory, not compute, is the resource that runs out: every running sequence grows its cache each step, so the engine can admit a batch it cannot afford to finish. When the block allocator cannot serve a step it preempts a victim two ways. Swapping copies that sequence's KV to host memory and copies it back on resume, paying PCIe bandwidth twice but keeping the work. Recomputing drops the KV entirely and re-runs prefill on resume, paying FLOPs and freeing the memory immediately.",
+    "example": "A 13B model, 40 layers, d_model 5120, fp16, at 2048 tokens holds 2 x 40 x 2048 x 5120 x 2 B = 1.68 GB of KV. Swapping over PCIe 4.0 x16 at an achievable 25 GB/s costs 67 ms out and 67 ms back. Recomputing costs 2ND = 2 x 13e9 x 2048 = 53 TFLOP, which at 50% MFU on an A100 is 341 ms. Swap wins by 2.5x here; flip to a short 128-token sequence and recompute costs 21 ms against 8 ms of transfer, so the ordering reverses.",
+    "interview_question": "Under load your p99 TTFT is fine but p99 end-to-end latency has long tails on a minority of requests, and throughput is stable. What is happening, and how do you tune it?",
+    "answer_points": [
+      "Long tails on a subset with healthy throughput is the signature of preemption — victims are being paused and resumed, not slowed uniformly",
+      "KV memory exhaustion drives it: sequences grow every decode step, so admission that was safe becomes unaffordable later",
+      "Swap costs bandwidth and preserves work; recompute costs prefill FLOPs and frees memory now — long sequences favour swap, short ones favour recompute",
+      "Fixes: lower the admission watermark, cap concurrent sequences, or shrink KV (GQA, INT8 cache) so preemption stops triggering at all",
+      "The subtlety: FCFS preemption can starve a long request that is repeatedly chosen as victim, so the scheduler needs an ageing or priority rule to bound worst-case latency"
+    ],
+    "tags": [
+      "scheduler",
+      "preemption",
+      "vllm",
+      "kv-cache"
+    ]
+  },
+  {
+    "id": "attention-kernels-chunked-prefill-004",
+    "type": "concept",
+    "stage": "I4",
+    "category": "attention-kernels",
+    "topic": "Chunked prefill",
+    "difficulty": "mid",
+    "concept": "Prefill and decode share a GPU but want opposite things: prefill is one large compute-bound matmul, decode is a stream of tiny bandwidth-bound steps. Admit a long prompt into a running batch and its prefill occupies the whole step, so every decoding request stalls for the duration — head-of-line blocking that shows up as a TPOT spike for users who did nothing wrong. Chunked prefill splits the prompt into fixed token budgets and interleaves the pieces with ongoing decode steps in the same batch, converting one long stall into several short ones and filling otherwise idle tensor cores with prefill work.",
+    "example": "A 4096-token prompt on a 13B model is 2 x 13e9 x 4096 = 106 TFLOP, about 683 ms at 50% MFU on an A100. Every concurrent decoder waits that long, so a user seeing 30 ms between tokens gets one 683 ms gap. Chunked into 8 pieces of 512 tokens, each chunk is roughly 85 ms and decode steps run between them: the worst-case TPOT spike drops about 8x, at the cost of slightly higher total prefill time from re-reading the KV of earlier chunks.",
+    "interview_question": "Users report the stream freezing for most of a second at random, but your TTFT and throughput dashboards are both green. Diagnose it.",
+    "answer_points": [
+      "Averaged TTFT and throughput hide it because the victims are other requests' TPOT, not the request causing the stall",
+      "A long prefill monopolises a batch step; the stall length is the prefill time, ~683 ms for 4096 tokens on a 13B at 50% MFU",
+      "Chunked prefill caps tokens per step so the spike falls to roughly the chunk's cost, trading a little throughput for a much tighter TPOT distribution",
+      "Chunk size is the tuning knob: smaller chunks smooth TPOT further but re-read prior KV more often and dilute the matmul's efficiency",
+      "Worth knowing: mixing a compute-bound chunk with bandwidth-bound decode in one step actually raises utilisation, so the throughput cost is usually smaller than the extra reads suggest"
+    ],
+    "tags": [
+      "chunked-prefill",
+      "tpot",
+      "scheduling",
+      "vllm"
+    ]
+  },
+  {
+    "id": "batching-prefix-caching-kv-reuse-radixattention-003",
+    "type": "concept",
+    "stage": "I5",
+    "category": "batching",
+    "topic": "Prefix caching",
+    "difficulty": "mid",
+    "concept": "Prefill recomputes the KV of every prompt from scratch, yet production traffic repeats its opening constantly: one system prompt, the same few-shot block, the growing history of a chat turn. Because attention is causal, the KV of a prefix depends only on that prefix, so it is identical across every request sharing it and can be computed once and reused. vLLM hashes block-aligned prefixes; SGLang's RadixAttention keeps them in a radix tree keyed by token sequence with LRU eviction, which matches the longest cached prefix rather than requiring an exact hit. The saving lands entirely on TTFT and on prefill capacity.",
+    "example": "A 2000-token system prompt shared by 1000 requests on a 13B model: each prefill is 2 x 13e9 x 2000 = 52 TFLOP, so 999 repeats cost 52 PFLOP. At 50% MFU on an A100 that is about 333 seconds of GPU time reclaimed, and each request's TTFT for the shared portion falls from roughly 333 ms to a block-table lookup. A multi-turn chat compounds it further, since turn N reuses the whole of turn N-1's prefix.",
+    "interview_question": "You serve a RAG endpoint where every request carries the same 3000-token instruction block followed by 200 tokens of retrieved context. TTFT is dominated by prefill. What do you change, and what is the ceiling on the win?",
+    "answer_points": [
+      "The instruction block is a shared prefix, so its KV is identical across requests and needs computing once, not per request",
+      "Enable prefix caching / RadixAttention; TTFT drops to the cost of the unshared suffix, here 200 of 3200 tokens, so roughly a 16x prefill reduction",
+      "The ceiling is set by the unshared tail — nothing after the first divergent token can be reused, which is why the variable part must go last",
+      "Cache blocks occupy the same KV pool as running sequences, so aggressive caching trades against concurrency and needs eviction tuning",
+      "The trap: putting anything per-request early in the prompt — a timestamp, a user id, a session token — destroys the shared prefix and silently returns you to full prefill"
+    ],
+    "tags": [
+      "prefix-caching",
+      "radixattention",
+      "sglang",
+      "ttft"
+    ]
+  },
+  {
+    "id": "kv-cache-kv-cache-quantization-005",
+    "type": "concept",
+    "stage": "I3",
+    "category": "kv-cache",
+    "topic": "KV cache quantization",
+    "difficulty": "mid",
+    "concept": "Weight quantization shrinks a fixed cost; KV quantization shrinks the one that grows with every token and every concurrent user. Storing K and V in INT8 or FP8 rather than fp16 halves cache bytes, which buys either twice the context or twice the concurrency, and because decode is bandwidth bound it also cuts the bytes read per generated token. Scales are kept per token or per channel rather than per tensor. K is the awkward tensor: it carries strong per-channel outliers, so it usually wants asymmetric or per-channel treatment while V tolerates something simpler. The saving composes with GQA rather than competing with it.",
+    "example": "LLaMA-2 70B with GQA-8, 80 layers, d_h=128, 4096 context, fp16 is 10.5 GB of KV per sequence. Two 80 GB A100s hold 140 GB of weights and leave about 20 GB, so fp16 allows one concurrent sequence with almost nothing spare. INT8 KV halves it to 5.2 GB and allows three, tripling concurrency on hardware you already own. Reported quality cost on standard benchmarks is typically well under a point, and far smaller than the accuracy hit from quantizing weights to the same width.",
+    "interview_question": "You need to triple concurrency on a fixed two-GPU deployment of a 70B model. Weight quantization is off the table because quality regressed. What else is available, and what would you measure to prove it is safe?",
+    "answer_points": [
+      "KV is the memory that scales with load, so halving it converts directly into concurrency — 10.5 GB to 5.2 GB per sequence at 4096 context",
+      "INT8/FP8 KV is a much gentler intervention than INT8 weights: errors enter the attention average rather than every matmul",
+      "Per-token or per-channel scales are required; per-tensor scales fail on K, which has large per-channel outliers",
+      "It also helps speed, not just capacity, because decode reads the cache every step and decode is bandwidth bound",
+      "Measure long-context and retrieval-style tasks specifically — cache quantization error accumulates with sequence length, so a short-prompt eval will show nothing and prove nothing"
+    ],
+    "tags": [
+      "kv-cache",
+      "quantization",
+      "int8",
+      "fp8",
+      "concurrency"
+    ]
+  },
+  {
+    "id": "decoding-speculative-decoding-draft-target-accept-reject-003",
+    "type": "concept",
+    "stage": "I7",
+    "category": "decoding",
+    "topic": "Speculative decoding",
+    "difficulty": "hard",
+    "formula": "\\mathbb{E}[\\text{speedup}] = \\frac{1 - \\alpha^{k+1}}{(1-\\alpha)\\,(1 + kc)}",
+    "concept": "Decode wastes a GPU: streaming every weight from HBM to produce one token leaves the tensor cores idle. Speculative decoding buys those idle FLOPs back. A small draft model proposes k tokens autoregressively, then the target model scores all k+1 positions in a single forward pass — the same weight traffic that used to yield one token. Each proposal is accepted with probability min(1, p/q) against the target and target distribution p and draft q, and a rejection resamples from the normalised residual. The output distribution is provably identical to plain sampling from the target, so this is a pure latency win, not an approximation.",
+    "example": "With acceptance rate alpha = 0.8, k = 4 proposals, and a draft costing c = 0.1 of a target pass: expected accepted tokens per round is (1 - 0.8^5)/(1 - 0.8) = 0.6723/0.2 = 3.36, against a cost of 1 + 4(0.1) = 1.4 target passes, giving 2.4x. Push k to 8 with the same alpha and the numerator only reaches 4.16 while the denominator hits 1.8, so the speedup falls to 2.3x — the geometric tail means extra proposals stop paying.",
+    "interview_question": "You deploy speculative decoding with a 1B draft against a 70B target and measure a 1.1x speedup instead of the 2.5x in the paper. Walk me through the diagnosis.",
+    "answer_points": [
+      "Two variables set the result: acceptance rate alpha and relative draft cost c — measure alpha directly before blaming anything else",
+      "A 1B draft against a 70B target may cost more than c = 0.1 in practice; if the draft is 1/10 the FLOPs but runs at poor utilisation, its wall-clock share is much larger",
+      "Low alpha usually means a domain mismatch between draft and target; distilling the draft on the target's own outputs is the standard fix",
+      "k is not free — speedup is concave in k, so an over-large k wastes draft passes on tokens that will be rejected anyway",
+      "The one that catches people: at high batch size decode is no longer idle on FLOPs, so the free capacity speculation exploits has already been spent and the technique stops helping"
+    ],
+    "tags": [
+      "speculative-decoding",
+      "draft-model",
+      "latency",
+      "sampling"
+    ],
+    "source_link": "https://arxiv.org/abs/2211.17192"
+  },
+  {
+    "id": "batching-prefill-decode-disaggregation-004",
+    "type": "concept",
+    "stage": "I5",
+    "category": "batching",
+    "topic": "Prefill-decode disaggregation",
+    "difficulty": "hard",
+    "concept": "Prefill is compute bound and decode is bandwidth bound, so co-locating them on one GPU forces a single configuration to serve two opposite workloads, and each interferes with the other's tail latency. Disaggregation gives them separate pools: prefill nodes build the KV cache, ship it to decode nodes, and decode nodes generate. Each pool can then choose its own parallelism, batch size and even hardware — high-FLOP parts for prefill, high-bandwidth parts for decode — and TTFT stops fighting TPOT. The cost is that the KV cache must cross the network between them, which is the number that decides whether the split is worth it.",
+    "example": "A 13B model at 2048 context carries 1.68 GB of KV per request. Over NVLink at 300 GB/s that transfer is 5.6 ms, comfortably under a typical 30 ms TPOT budget. Over 100 GbE at 12.5 GB/s effective it is 134 ms, which exceeds the entire prefill time saved and makes the split a regression. The same deployment therefore succeeds inside one NVLink domain and fails across racks — the interconnect, not the model, decides.",
+    "interview_question": "Your service has a strict TTFT SLO and a strict TPOT SLO, and tightening either one breaks the other. Describe the architectural change you would make and the single measurement that tells you whether it will work.",
+    "answer_points": [
+      "The conflict is structural: prefill and decode contend for one GPU with opposite bottlenecks, so no batch-size setting satisfies both",
+      "Disaggregate into prefill and decode pools (Splitwise, DistServe), each sized and parallelised for its own regime, and scale them independently by traffic shape",
+      "The deciding measurement is KV transfer time over the available interconnect: 1.68 GB per request is 5.6 ms on NVLink and 134 ms on 100 GbE",
+      "GQA and KV quantization matter twice here, since they shrink the bytes that must cross the wire as well as the bytes stored",
+      "Often missed: disaggregation also decouples the failure and upgrade domains, letting you scale decode capacity for long generations without buying prefill FLOPs you will not use"
+    ],
+    "tags": [
+      "disaggregation",
+      "splitwise",
+      "distserve",
+      "ttft",
+      "tpot"
+    ],
+    "source_link": "https://arxiv.org/abs/2311.18677"
   }
 ]
