@@ -1,15 +1,21 @@
-/* ML Trainer — Phase 1.
+/* ML Trainer — Phase 1 plus threaded ordering.
  *
- * Load the bundled cards, validate them, show one at random, and reveal the
- * question and answer points in place on the same page.
+ * Load the bundled cards, validate them, order them into threads that read as
+ * a sequence, and reveal the question and answer points in place on the page.
  *
- * Deliberately not here yet: Leitner scheduling, the daily queue, grading, and
- * background sync from GitHub. Those are Phases 2 and 4 and get their own
- * modules (scheduler.js, queue.js) so this file stays readable.
+ * Ordering lives in queue.js as pure functions. This file only fetches,
+ * validates, and renders.
+ *
+ * Deliberately not here yet: Leitner scheduling, review state, grading, and
+ * background sync from GitHub. Those are Phases 2 and 4.
  */
 
+import { buildQueue, validateThreads } from "./queue.js";
+
 const CONTENT_URL = "content/cards.json";
+const THREADS_URL = "content/threads.json";
 const CACHE_KEY = "cards:v1"; // last known-good content, per SPEC 3.5
+const THREADS_CACHE_KEY = "threads:v1";
 
 // ---------------------------------------------------------------- schema
 //
@@ -122,11 +128,55 @@ async function loadDeck() {
   }
 }
 
+/**
+ * Load the thread manifest.
+ *
+ * Threads are presentation, not content: if this fetch or its validation
+ * fails the deck is still perfectly usable in plain stage order, so every
+ * failure path here returns an empty thread list rather than propagating.
+ */
+async function loadThreads(cardsById) {
+  let raw = null;
+
+  try {
+    const res = await fetch(THREADS_URL, { cache: "no-cache" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    raw = await res.json();
+  } catch (err) {
+    console.warn("threads fetch failed, falling back to last known good", err);
+    try {
+      raw = JSON.parse(localStorage.getItem(THREADS_CACHE_KEY) || "null");
+    } catch {
+      raw = null;
+    }
+  }
+
+  if (raw === null) return { threads: [], problems: [] };
+
+  const { threads, problems } = validateThreads(raw, cardsById);
+  if (problems.length) console.warn(`${problems.length} thread problem(s)`, problems);
+
+  if (threads.length) {
+    try {
+      localStorage.setItem(THREADS_CACHE_KEY, JSON.stringify(raw));
+    } catch (err) {
+      console.warn("could not cache threads", err);
+    }
+  }
+
+  return { threads, problems };
+}
+
 // -------------------------------------------------------------- rendering
 
 const el = (id) => document.getElementById(id);
 
 const $card = el("card");
+const $thread = el("thread");
+const $threadTitle = el("thread-title");
+const $threadProgress = el("thread-progress");
+const $threadDots = el("thread-dots");
+const $hook = el("hook");
 const $category = el("category");
 const $stage = el("stage");
 const $position = el("position");
@@ -249,7 +299,44 @@ function applyReveal() {
   }
 }
 
-function renderCard(card, index, total) {
+/** The thread strip and the connective line above the card. */
+function renderThread(entry) {
+  const { thread, position, length, hook } = entry;
+
+  if (!thread) {
+    $thread.hidden = true;
+    $hook.hidden = true;
+    return;
+  }
+
+  $thread.hidden = false;
+  $threadTitle.textContent = thread.title;
+  $threadProgress.textContent = `${position} of ${length}`;
+
+  // One dot per card in the thread, filled up to where you are. It is a
+  // position indicator, not a score — nothing here counts down or nags.
+  $threadDots.textContent = "";
+  for (let i = 1; i <= length; i++) {
+    const dot = document.createElement("li");
+    dot.className = "thread-dot";
+    if (i < position) dot.dataset.state = "done";
+    else if (i === position) dot.dataset.state = "here";
+    $threadDots.appendChild(dot);
+  }
+
+  // First card of a thread opens with the premise; the rest carry the line
+  // that connects them to the card before.
+  const lead = position === 1 ? thread.premise : hook;
+  $hook.textContent = lead || "";
+  $hook.hidden = !lead;
+  $hook.dataset.kind = position === 1 ? "premise" : "hook";
+}
+
+function renderCard(entry, index, total) {
+  const card = entry.card;
+
+  renderThread(entry);
+
   $category.textContent = CATEGORY_LABEL[card.category] || card.category;
   $stage.textContent = card.stage;
   $position.textContent = `${index + 1} / ${total}`;
@@ -306,17 +393,6 @@ function showEmptyState(problems) {
 
 // ------------------------------------------------------------------ app
 
-/* Phase 1 navigation: a shuffled deck, walked with the arrows. Phase 2
- * replaces this wholesale with the daily queue from queue.js. */
-function shuffle(items) {
-  const out = items.slice();
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
 async function main() {
   const { cards, problems, source } = await loadDeck();
 
@@ -325,14 +401,20 @@ async function main() {
     return;
   }
 
-  const deck = shuffle(cards);
+  const cardsById = new Map(cards.map((c) => [c.id, c]));
+  const { threads } = await loadThreads(cardsById);
+
+  // Ordered, not shuffled: threaded cards in the order their thread tells the
+  // story, everything else after them in curriculum order.
+  const deck = buildQueue(cards, threads);
   let index = 0;
 
   const show = () => {
-    renderCard(deck[index], index, deck.length);
+    const entry = deck[index];
+    renderCard(entry, index, deck.length);
     $prev.disabled = index === 0;
     $next.disabled = index === deck.length - 1;
-    $barLabel.textContent = deck[index].type === "formula" ? "formula" : "concept";
+    $barLabel.textContent = entry.card.type === "formula" ? "formula" : "concept";
   };
 
   $reveal.addEventListener("click", () => {
@@ -370,7 +452,7 @@ async function main() {
   // KaTeX is deferred, so the first card may paint before it is ready.
   // Re-render the formula once it arrives.
   if (typeof window.katex === "undefined") {
-    window.addEventListener("load", () => renderFormula(deck[index].formula), { once: true });
+    window.addEventListener("load", () => renderFormula(deck[index].card.formula), { once: true });
   }
 }
 
