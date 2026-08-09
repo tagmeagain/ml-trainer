@@ -62,6 +62,72 @@ body {
 }
 
 /* 1. category chip, stage, position */
+/* 0. thread strip — where this card sits in a story.
+   Quiet by design: it orients you, then gets out of the way. */
+.thread {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.thread-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+.thread-progress {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.thread-dots {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.thread-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.thread-dot[data-state="done"] { background: var(--accent-dim); }
+.thread-dot[data-state="here"] {
+  background: var(--accent);
+  /* the one you are on reads as a slightly longer mark, not a bigger dot */
+  width: 14px;
+  border-radius: 3px;
+}
+
+/* 0b. the line carrying you in from the previous card */
+.hook {
+  margin: 0 0 1.1rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--accent-dim);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* A thread's opening card states the premise instead, which is a slightly
+   more formal register — set it apart without shouting. */
+.hook[data-kind="premise"] {
+  border-left-color: var(--border);
+  color: var(--text-faint);
+  font-style: italic;
+}
+
 .meta {
   display: flex;
   align-items: center;

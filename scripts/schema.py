@@ -280,6 +280,74 @@ class Card(BaseModel):
 # --------------------------------------------------------------------------
 
 
+class ThreadEntry(BaseModel):
+    """One card's slot in a thread, with the line that leads into it."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id: str
+    hook: str | None = None
+
+    _id_format = field_validator("id")(Card._id_format.__func__)  # type: ignore[attr-defined]
+
+    @field_validator("hook")
+    @classmethod
+    def _hook_not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("hook is present but blank; omit the field instead")
+        return v
+
+
+class Thread(BaseModel):
+    """An ordered arc through cards that already exist.
+
+    Threads are presentation, not content: they carry no card text, only ids
+    plus the connective line between one card and the next. A card may appear
+    in more than one thread, which is why the hook lives here and not on the
+    card — it only means anything relative to what precedes it *in this arc*.
+
+    Cross-file checks (do the ids resolve, is the arc long enough) live in
+    validate.py, which is the only place that has the whole deck in hand.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    premise: str | None = None
+    cards: list[ThreadEntry] = Field(min_length=2)
+
+    @field_validator("id")
+    @classmethod
+    def _thread_id_slug(cls, v: str) -> str:
+        if not re.match(r"^[a-z0-9]+(?:-[a-z0-9]+)*$", v):
+            raise ValueError(f"thread id {v!r} must be a lowercase hyphenated slug")
+        return v
+
+    @model_validator(mode="after")
+    def _no_repeated_cards(self) -> "Thread":
+        seen: set[str] = set()
+        for entry in self.cards:
+            if entry.id in seen:
+                raise ValueError(f"card {entry.id!r} appears twice in thread {self.id!r}")
+            seen.add(entry.id)
+        return self
+
+    @model_validator(mode="after")
+    def _first_card_needs_no_hook(self) -> "Thread":
+        """Nothing precedes the opening card, so a hook on it is a mistake.
+
+        The app suppresses it and shows the premise instead; flagging it here
+        stops an author writing a line that will never be seen.
+        """
+        if self.cards and self.cards[0].hook is not None:
+            raise ValueError(
+                f"thread {self.id!r}: the first card has a hook, but nothing precedes "
+                "it — the premise is what opens a thread"
+            )
+        return self
+
+
 class Stub(BaseModel):
     """An unfilled tracker row (SPEC 6.1). Not a finished card.
 

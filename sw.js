@@ -35,6 +35,7 @@ const SHELL_ASSETS = [
   ".",
   "index.html",
   "app.js",
+  "queue.js",
   "styles.css",
   "manifest.webmanifest",
   "icons/icon-192.png",

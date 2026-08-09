@@ -31,6 +31,17 @@
 <body>
 
 <main id="card" class="card" aria-live="polite">
+  <!-- 0. thread strip: which story this card sits in, and how far along -->
+  <section class="thread" id="thread" hidden>
+    <span class="thread-title" id="thread-title"></span>
+    <span class="thread-progress" id="thread-progress"></span>
+    <ol class="thread-dots" id="thread-dots" aria-hidden="true"></ol>
+  </section>
+
+  <!-- 0b. the line that carries you here from the previous card, or the
+       thread's premise when this is the first card of one -->
+  <p class="hook" id="hook" hidden></p>
+
   <!-- 1. category chip, stage code, position -->
   <header class="meta">
     <span class="chip" id="category"></span>

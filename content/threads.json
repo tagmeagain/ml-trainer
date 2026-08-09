@@ -1,0 +1,166 @@
+[
+  {
+    "id": "why-long-chats-get-slow",
+    "title": "Why long chats get slow",
+    "premise": "Attention is the reason a transformer works and the reason it gets expensive. Start at the mechanism, where every token scores itself against every other token — hold on to that word every, it is the whole story of this thread.",
+    "cards": [
+      { "id": "attention-scaled-dot-product-004" },
+      {
+        "id": "attention-multi-head-attention-002",
+        "hook": "One set of scores can only express one notion of relevance. So run several in parallel and see what that buys."
+      },
+      {
+        "id": "attention-mha-parameters-005",
+        "hook": "Now the bill. Those projections are matrices, and matrices are parameters — here is how to size them in your head."
+      },
+      {
+        "id": "kv-cache-kv-cache-memory-001",
+        "hook": "Parameters are fixed. This next cost is not: it grows with every token in the conversation, and it is what actually fills your GPU."
+      },
+      {
+        "id": "efficient-attention-gqa-kv-reduction-006",
+        "hook": "That cache is too big. The fix is to notice that query heads and key/value heads do not have to come in matched pairs."
+      },
+      {
+        "id": "gpu-arch-arithmetic-intensity-001",
+        "hook": "Step back from the model. To see why a smaller cache matters so much, you need the number that decides whether a GPU is doing maths or waiting on memory."
+      },
+      {
+        "id": "inference-math-llm-decode-tpot-001",
+        "hook": "Apply that number to decoding and you get the uncomfortable answer: generation is not compute bound at all."
+      },
+      {
+        "id": "attention-kernels-fa-io-complexity-001",
+        "hook": "If memory traffic is the enemy, the winning move is to never write the attention matrix down. That is the whole idea behind FlashAttention."
+      }
+    ]
+  },
+  {
+    "id": "logits-to-trained-model",
+    "title": "From logits to a trained model",
+    "premise": "The full loop from a raw score to a weight update. It begins with the object everything else is built on — the direction in which a loss gets worse fastest — and every piece after it reappears inside a transformer.",
+    "cards": [
+      { "id": "nn-foundations-gradient-008" },
+      {
+        "id": "nn-foundations-stable-softmax-gradient-002",
+        "hook": "Scores are not probabilities. Turning one into the other is easy to write and easy to get numerically wrong."
+      },
+      {
+        "id": "nn-foundations-cross-entropy-loss-gradient-003",
+        "hook": "Given probabilities, how wrong were they? The gradient of this loss is famously clean — worth knowing exactly why."
+      },
+      {
+        "id": "math-prereq-backprop-for-2-layer-net-numpy-006",
+        "hook": "Chain those gradients backwards through two layers and you have the entire training algorithm, no framework involved."
+      },
+      {
+        "id": "nn-foundations-optimizers-sgd-adam-adamw-004",
+        "hook": "Having a gradient is not the same as knowing what step to take with it. This is where SGD gives way to Adam, and where AdamW fixes Adam."
+      },
+      {
+        "id": "nn-foundations-cosine-lr-warmup-schedule-005",
+        "hook": "The step size should not be constant either. Warmup and decay are not folklore — each end of the schedule solves a specific failure."
+      },
+      {
+        "id": "nn-foundations-gradient-flow-through-residuals-006",
+        "hook": "Now stack this a hundred layers deep and it stops working. The residual connection is the reason deep networks train at all."
+      }
+    ]
+  },
+  {
+    "id": "text-to-tensors",
+    "title": "Text to tensors",
+    "premise": "A model never sees text. Two conversions happen before layer one: characters into tokens, tokens into vectors. Neither vocabulary is given to you — the first one is learned by repeatedly merging whichever pair of symbols occurs most often.",
+    "cards": [
+      { "id": "tokenization-bpe-algorithm-001" },
+      {
+        "id": "tokenization-wordpiece-sentencepiece-unigram-lm-002",
+        "hook": "BPE merges by raw frequency. Change the thing you are greedy about and you get a different family of tokenizers."
+      },
+      {
+        "id": "tokenization-word2vec-glove-static-embeddings-004",
+        "hook": "Now the tokens need to become vectors. Before transformers, one vector per word was the whole idea — and the reason it fails is instructive."
+      },
+      {
+        "id": "tokenization-token-embeddings-weight-tying-003",
+        "hook": "Modern models keep the lookup table but share it with the output layer. That trick is worth a third of a small model's parameters."
+      }
+    ]
+  },
+  {
+    "id": "how-big-how-long",
+    "title": "How big, how long, how much",
+    "premise": "Four numbers decide a training run: how good the model is, how much compute it takes, how much data it needs, and how much memory it eats. They are all connected. Start with what the loss actually measures — the answer is in bits, and it has a very physical interpretation.",
+    "cards": [
+      { "id": "nn-foundations-information-theory-perplexity-007" },
+      {
+        "id": "training-scale-clm-loss-ppl-005",
+        "hook": "Put that measure on a real next-token objective and you get the number every pretraining run is judged on."
+      },
+      {
+        "id": "training-scale-training-flops-007",
+        "hook": "Lowering that loss costs compute. There is a single approximation that gets you within a few percent of any run's total cost."
+      },
+      {
+        "id": "training-scale-chinchilla-optimal-006",
+        "hook": "Given a fixed compute budget, should you buy a bigger model or more data? For years the field guessed wrong."
+      },
+      {
+        "id": "training-scale-training-memory-adam-008",
+        "hook": "Compute is only half the constraint. Here is why the weights are the smallest thing in your GPU during training."
+      }
+    ]
+  },
+  {
+    "id": "what-people-want",
+    "title": "Teaching a model what people want",
+    "premise": "A pretrained model predicts text; it does not prefer anything. This is the machinery that installs a preference. Start with the objective itself, and in particular with the penalty term that stops the model wandering away from what you began with.",
+    "cards": [
+      { "id": "alignment-rlhf-objective-009" },
+      {
+        "id": "alignment-bradley-terry-rm-loss-008",
+        "hook": "That objective needs a reward. Nobody can score an answer out of ten reliably — but anyone can say which of two is better."
+      },
+      {
+        "id": "alignment-dpo-loss-010",
+        "hook": "Now the punchline: if the reward model is only ever used this way, you can skip building it and optimise the policy directly."
+      },
+      {
+        "id": "peft-lora-058",
+        "hook": "All of this assumes you can afford to update the weights. Here is the trick that makes it possible on one GPU."
+      }
+    ]
+  },
+  {
+    "id": "inside-the-block",
+    "title": "Inside the block",
+    "premise": "Attention gets the attention. The other two thirds of a transformer block are normalisation and a feed-forward network, and both have changed since 2017. First question: why normalise at all, and why across the feature dimension rather than the batch?",
+    "cards": [
+      { "id": "transformer-block-layernorm-006" },
+      {
+        "id": "transformer-block-rmsnorm-007",
+        "hook": "LLaMA dropped half of LayerNorm and lost nothing. Which half, and why did it not matter?"
+      },
+      {
+        "id": "transformer-block-swiglu-008",
+        "hook": "The feed-forward network got the same treatment: a gate replaced the activation, and the hidden width shrank to pay for it."
+      }
+    ]
+  },
+  {
+    "id": "where-position-comes-from",
+    "title": "Where position comes from",
+    "premise": "Attention is a set operation — it has no idea which token came first. Everything here is a different answer to that problem, beginning with the dominant one: rotate the query and key vectors by an angle that depends on position, so their dot product only sees the gap between them.",
+    "cards": [
+      { "id": "positional-rope-005" },
+      {
+        "id": "positional-ntk-context-scaling-006",
+        "hook": "That works up to the length you trained on, then falls apart. Stretching it further is a question about frequencies."
+      },
+      {
+        "id": "positional-alibi-007",
+        "hook": "Or skip the embedding entirely and just penalise distance in the attention scores. Simpler, and it extrapolates for free."
+      }
+    ]
+  }
+]

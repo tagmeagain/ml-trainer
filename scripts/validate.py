@@ -22,13 +22,16 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from schema import Card, Stub
+from schema import Card, Stub, Thread
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTENT = ROOT / "content"
 
 # Files whose entries are stubs rather than finished cards.
 STUB_FILES = {"stubs.json"}
+
+# Files whose entries are threads: ordering over cards, not cards themselves.
+THREAD_FILES = {"threads.json"}
 
 # CLAUDE.md: "interview_question is a scenario, not a definition prompt."
 DEFINITION_PROMPT_RE = re.compile(
@@ -71,6 +74,7 @@ def main() -> int:
     ids_seen: dict[str, str] = {}          # id -> "file[index]"
     counts: dict[str, int] = {}
     cards_by_file: dict[str, list[Card]] = defaultdict(list)
+    threads: list[tuple[str, Thread]] = []  # ("file[index]", thread)
 
     for path in files:
         rel = path.relative_to(ROOT)
@@ -86,7 +90,12 @@ def main() -> int:
             counts[path.name] = 0
             continue
 
-        model = Stub if path.name in STUB_FILES else Card
+        if path.name in THREAD_FILES:
+            model = Thread
+        elif path.name in STUB_FILES:
+            model = Stub
+        else:
+            model = Card
         counts[path.name] = len(raw)
 
         for i, entry in enumerate(raw):
@@ -101,6 +110,12 @@ def main() -> int:
                 errors.extend(_fmt(exc, f"{where} id={ident}"))
                 continue
 
+            if isinstance(obj, Thread):
+                # Thread ids live in their own namespace — they name an arc,
+                # not a card — so they are deliberately not added to ids_seen.
+                threads.append((where, obj))
+                continue
+
             # -- ids are permanent and must be globally unique --------------
             prior = ids_seen.get(obj.id)
             if prior is not None:
@@ -112,9 +127,18 @@ def main() -> int:
                 cards_by_file[path.name].append(obj)
                 _lint_card(obj, where, warnings)
 
+    # -- cross-file: threads must point at cards that exist -----------------
+    card_ids = {c.id for cards in cards_by_file.values() for c in cards}
+    _check_threads(threads, card_ids, ids_seen, errors, warnings)
+
     # -- report ------------------------------------------------------------
     for name in sorted(counts):
-        kind = "stubs" if name in STUB_FILES else "cards"
+        if name in THREAD_FILES:
+            kind = "threads"
+        elif name in STUB_FILES:
+            kind = "stubs"
+        else:
+            kind = "cards"
         print(f"  {name:<16} {counts[name]:>4} {kind}")
     total_cards = sum(len(v) for v in cards_by_file.values())
     print(f"  {'':<16} {'':>4} ---")
@@ -134,6 +158,60 @@ def main() -> int:
 
     print("\nOK")
     return 0
+
+
+def _check_threads(
+    threads: list[tuple[str, Thread]],
+    card_ids: set[str],
+    ids_seen: dict[str, str],
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    """Cross-file thread invariants.
+
+    The browser-side validator in queue.js deliberately tolerates a thread that
+    names a card which does not exist — a bad content push must not break the
+    installed app. That tolerance is a runtime safety net, not a licence: on the
+    laptop an unresolvable reference is an error, because it is always a typo or
+    a card that was renamed in violation of the permanent-id rule.
+    """
+    if not threads:
+        return
+
+    seen_thread_ids: dict[str, str] = {}
+    threaded: set[str] = set()
+
+    for where, thread in threads:
+        prior = seen_thread_ids.get(thread.id)
+        if prior is not None:
+            errors.append(
+                f"{where}: duplicate thread id {thread.id!r}, already used at {prior}"
+            )
+        else:
+            seen_thread_ids[thread.id] = where
+
+        for j, entry in enumerate(thread.cards):
+            if entry.id in card_ids:
+                threaded.add(entry.id)
+                continue
+            if entry.id in ids_seen:
+                errors.append(
+                    f"{where}.cards[{j}]: {entry.id!r} is a stub, not a finished card, "
+                    "so it has nothing to render"
+                )
+            else:
+                errors.append(
+                    f"{where}.cards[{j}]: references unknown card {entry.id!r}"
+                )
+
+    # Coverage note, not a failure: unthreaded cards still reach the queue via
+    # the stage-ordered tail. It is just useful to know how much has a story.
+    loose = len(card_ids) - len(threaded)
+    if loose:
+        warnings.append(
+            f"{loose} of {len(card_ids)} cards belong to no thread and will appear "
+            "in plain stage order"
+        )
 
 
 def _lint_card(card: Card, where: str, warnings: list[str]) -> None:
