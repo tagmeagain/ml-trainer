@@ -36,6 +36,50 @@
     ]
   },
   {
+    "id": "serving-it-at-scale",
+    "title": "Serving it without melting the GPU",
+    "premise": "The previous thread ended with a model that is fast in isolation. This one is about the second problem: hundreds of users at once, on hardware you have already bought. Everything here follows from one fact — decode leaves the tensor cores idle, so almost every trick is about spending that idleness or reclaiming the memory it wastes.",
+    "cards": [
+      { "id": "inference-math-the-central-dichotomy-compute-bound-vs-memory-bound-005" },
+      {
+        "id": "gpu-arch-utilization-mfu-vs-mbu-005",
+        "hook": "If decode cannot use the FLOPs, then the utilisation number on your dashboard is measuring the wrong resource. Two metrics, and only one is honest here."
+      },
+      {
+        "id": "batching-static-vs-dynamic-vs-continuous-iteration-level-batching-001",
+        "hook": "Idle tensor cores are an opportunity: more sequences per weight fetch is nearly free throughput. The catch is that a naive batch spends half its life on padding."
+      },
+      {
+        "id": "kv-cache-pagedattention-fragmentation-block-table-cow-006",
+        "hook": "Batching more sequences means holding more caches, and now memory runs out first. It turns out most of it was never being used."
+      },
+      {
+        "id": "batching-scheduler-internals-queues-preemption-swap-vs-recompute-002",
+        "hook": "Even with the waste gone you can admit a batch you cannot afford to finish, because each sequence grows every step. Something has to be evicted."
+      },
+      {
+        "id": "attention-kernels-chunked-prefill-004",
+        "hook": "Memory is under control; now the two workloads start hurting each other. A single long prompt can freeze everybody else's stream."
+      },
+      {
+        "id": "batching-prefix-caching-kv-reuse-radixattention-003",
+        "hook": "Better still than scheduling prefill well is not doing it at all — and in production traffic, most prompts begin identically."
+      },
+      {
+        "id": "kv-cache-kv-cache-quantization-005",
+        "hook": "One more source of memory. Having stopped wasting cache and stopped recomputing it, the last move is to store the same cache in half the bytes."
+      },
+      {
+        "id": "decoding-speculative-decoding-draft-target-accept-reject-003",
+        "hook": "Now back to those idle FLOPs from the first card. There is a way to spend them on guesses and get a provably identical answer, faster."
+      },
+      {
+        "id": "batching-prefill-decode-disaggregation-004",
+        "hook": "The last resort, once one GPU cannot be tuned for both regimes at once: stop asking it to."
+      }
+    ]
+  },
+  {
     "id": "logits-to-trained-model",
     "title": "From logits to a trained model",
     "premise": "The full loop from a raw score to a weight update. It begins with the object everything else is built on — the direction in which a loss gets worse fastest — and every piece after it reappears inside a transformer.",
